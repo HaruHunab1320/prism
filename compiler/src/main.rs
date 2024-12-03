@@ -4,95 +4,90 @@ mod ast;
 mod types;
 mod context;
 mod confidence;
+mod interpreter;
+mod stdlib;
+mod llm;
 
-use miette::{Result, IntoDiagnostic};
+use std::error::Error;
+use miette::{IntoDiagnostic, Result, Diagnostic};
+use thiserror::Error;
 use crate::lexer::Lexer;
-use crate::parser::Parser;
-use crate::confidence::ConfidenceEngine;
-use crate::context::ContextManager;
-use std::fs;
-use std::path::PathBuf;
+use crate::parser::{Parser, ParseError};
+use crate::interpreter::Interpreter;
 
-struct Interpreter {
-    confidence_engine: ConfidenceEngine,
-    context_manager: ContextManager,
+#[derive(Error, Debug, Diagnostic)]
+#[error("{message}")]
+pub struct PrismError {
+    message: String,
+    #[label("here")]
+    position: usize,
 }
 
-impl Interpreter {
-    fn new() -> Self {
+impl From<String> for PrismError {
+    fn from(message: String) -> Self {
         Self {
-            confidence_engine: ConfidenceEngine::new(0.1), // Default decay rate
-            context_manager: ContextManager::new(),
+            message,
+            position: 0,
         }
     }
+}
 
-    fn evaluate(&mut self, input: &str) -> Result<String> {
-        println!("Tokenizing input: {}", input);
-        let lexer = Lexer::new(input);
-        let tokens: Vec<_> = lexer.collect();
-        println!("Tokens: {:?}", tokens);
-
-        let mut parser = Parser::new(tokens.into_iter());
-        
-        match parser.parse_program() {
-            Ok(statements) => {
-                let mut output = Vec::new();
-                for stmt in statements {
-                    output.push(format!("{}", stmt));
-                }
-                Ok(output.join("\n"))
-            }
-            Err(e) => Ok(format!("Parse error: {:?}", e)),
+impl From<ParseError> for PrismError {
+    fn from(err: ParseError) -> Self {
+        Self {
+            message: err.to_string(),
+            position: err.location(),
         }
-    }
-
-    fn evaluate_file(&mut self, path: PathBuf) -> Result<()> {
-        let content = fs::read_to_string(path).into_diagnostic()?;
-        println!("Evaluating file content:\n{}", content);
-        let result = self.evaluate(&content)?;
-        println!("Evaluation result:\n{}", result);
-        Ok(())
     }
 }
 
 fn main() -> Result<()> {
-    let args: Vec<String> = std::env::args().collect();
+    let input = std::fs::read_to_string("examples/basic.prism")
+        .into_diagnostic()?;
+
+    let lexer = Lexer::new(&input);
+    let mut parser = Parser::new(lexer);
     let mut interpreter = Interpreter::new();
 
-    if args.len() > 1 {
-        // Run file mode
-        let path = PathBuf::from(&args[1]);
-        interpreter.evaluate_file(path)?;
-    } else {
-        // REPL mode
-        println!("Prism Programming Language v0.1.0");
-        println!("Type 'help' for available commands or ':q' to quit");
+    let mut last_value = None;
 
-        let mut input = String::new();
-        loop {
-            print!("> ");
-            std::io::Write::flush(&mut std::io::stdout()).into_diagnostic()?;
-            
-            input.clear();
-            std::io::stdin().read_line(&mut input).into_diagnostic()?;
-            let input = input.trim();
-
-            if input == ":q" {
-                break;
-            }
-
-            match input {
-                "help" => print_help(),
-                _ => {
-                    match interpreter.evaluate(input) {
-                        Ok(result) => println!("{}", result),
-                        Err(e) => println!("Error: {}", e),
-                    }
-                }
-            }
-        }
+    while let Ok(stmt) = parser.parse_statement() {
+        last_value = Some(interpreter.eval(&stmt)
+            .map_err(PrismError::from)
+            .into_diagnostic()?);
     }
 
+    if let Some(value) = last_value {
+        println!("Result: {:?}", value);
+    }
+
+    Ok(())
+}
+
+fn evaluate(interpreter: &mut Interpreter, input: &str) -> Result<interpreter::Value> {
+    let lexer = Lexer::new(input);
+    let tokens: Vec<_> = lexer.collect();
+    println!("Tokens: {:?}", tokens);
+
+    let mut parser = Parser::new(tokens.into_iter());
+    let statements = parser.parse_program()
+        .map_err(PrismError::from)
+        .into_diagnostic()?;
+    
+    let mut last_value = interpreter::Value::Void;
+    for stmt in statements {
+        last_value = interpreter.eval(&stmt)
+            .map_err(PrismError::from)
+            .into_diagnostic()?;
+    }
+    Ok(last_value)
+}
+
+fn evaluate_file(interpreter: &mut Interpreter, path: std::path::PathBuf) -> Result<()> {
+    let content = std::fs::read_to_string(path).into_diagnostic()?;
+    println!("Evaluating file content:\n{}", content);
+    let result = evaluate(interpreter, &content)?;
+    println!("Evaluation result:\n{:?}", result);
     Ok(())
 }
 
@@ -105,4 +100,13 @@ fn print_help() {
     println!("  uncertain if (x ~> 0.7) {{ ... }}");
     println!("  in context Medical {{ ... }}");
     println!("  verify against sources {{ ... }}");
+    println!("\nStandard Library Functions:");
+    println!("  confidence.combine(x, y)   - Combine confidence values");
+    println!("  confidence.max(x, y)       - Get maximum confidence");
+    println!("  confidence.min(x, y)       - Get minimum confidence");
+    println!("  pattern.match(text, pat)   - Pattern matching");
+    println!("  pattern.semantic_match(text1, text2) - Semantic similarity");
+    println!("  pattern.transform(text, transform)   - Text transformation");
+    println!("  context.create(...)        - Create new context");
+    println!("  verify.source(...)         - Verify against source");
 } 

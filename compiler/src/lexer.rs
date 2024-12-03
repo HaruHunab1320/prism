@@ -2,7 +2,11 @@ use logos::Logos;
 use std::fmt;
 
 #[derive(Logos, Debug, PartialEq, Clone)]
+#[logos(extras = ())]
 pub enum Token {
+    #[regex(r"[ \t\n\r]+", logos::skip)]
+    #[regex(r"//[^\n]*", logos::skip)]
+    
     // Keywords
     #[token("conf")]
     Confidence,
@@ -78,15 +82,6 @@ pub enum Token {
     
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
     Identifier(String),
-
-    // Special
-    #[regex(r"[ \t\n\f]+", logos::skip)]
-    Whitespace,
-    
-    #[regex(r"//[^\n]*", logos::skip)]
-    Comment,
-    
-    Error,
 }
 
 impl fmt::Display for Token {
@@ -117,10 +112,7 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|result| match result {
-            Ok(token) => token,
-            Err(_) => Token::Error,
-        })
+        self.inner.next().and_then(|result| result.ok())
     }
 }
 

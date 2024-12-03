@@ -1,22 +1,17 @@
-// Basic confidence declaration
+// Basic confidence value declaration
 conf x = 0.8
 
-// Confidence flow
-x ~> 0.7
+// Confidence flow operation
+conf y = x ~> 0.9
 
 // Uncertain control flow
-uncertain if (x ~> 0.7) {
-    conf y = 0.9
+uncertain if (y ~> 0.7) {
+    // High confidence path
+    conf result = 1.0
 } medium {
-    conf y = 0.5
+    // Medium confidence path
+    conf result = 0.5
 } low {
-    conf y = 0.2
-}
-
-// Context management
-in context Medical {
-    conf diagnosis = 0.8
-    verify against sources ["pubmed"] 0.9 {
-        conf treatment = 0.7
-    }
+    // Low confidence path
+    conf result = 0.0
 } 

@@ -1,0 +1,101 @@
+// Gemini Integration Examples
+
+// Semantic pattern matching with Gemini embeddings
+conf semantic_match = pattern.semantic_match(
+    "The patient shows signs of elevated blood pressure",
+    "The individual's blood pressure readings are above normal"
+)
+
+// Pattern transformation using Gemini Pro
+let medical_terms = pattern.transform(
+    "The patient shows signs of elevated blood pressure",
+    "Convert to precise medical terminology using ICD-10 codes"
+)
+
+let simplified = pattern.transform(
+    medical_terms,
+    "Convert to patient-friendly language suitable for health literacy level 6"
+)
+
+// Multi-language support
+let translation = pattern.transform(
+    "The patient shows signs of elevated blood pressure",
+    "Translate to Spanish with medical accuracy"
+)
+
+// Source verification with medical context
+in context Medical {
+    let diagnosis = "The patient exhibits symptoms consistent with hypertension"
+    
+    // Verify against medical knowledge base
+    verify against sources ["medical_guidelines", "clinical_studies"] {
+        conf guidelines_verification = verify.source("medical_guidelines", diagnosis)
+        conf studies_verification = verify.source("clinical_studies", diagnosis)
+        
+        // Combine verification results
+        conf combined_verification = verify.combine_sources([
+            guidelines_verification,
+            studies_verification
+        ])
+        
+        // Make evidence-based decision
+        uncertain if (combined_verification ~> 0.8) {
+            print("Strong evidence-based diagnosis")
+            
+            // Generate treatment recommendations
+            let recommendations = pattern.transform(
+                diagnosis,
+                "Generate evidence-based treatment recommendations following current medical guidelines"
+            )
+        } else {
+            print("Additional diagnostic tests recommended")
+        }
+    }
+}
+
+// Research analysis with semantic search
+in context Research {
+    let research_question = "What is the relationship between regular exercise and cardiovascular health?"
+    
+    verify against sources ["systematic_reviews", "meta_analyses", "clinical_trials"] {
+        // Find relevant studies
+        conf systematic_review = verify.source("systematic_reviews", research_question)
+        conf meta_analysis = verify.source("meta_analyses", research_question)
+        conf trials = verify.source("clinical_trials", research_question)
+        
+        // Find semantically similar research questions
+        conf related_research = pattern.semantic_match(
+            research_question,
+            "How does physical activity impact heart disease risk factors?"
+        )
+        
+        // Combine evidence with weighted confidence
+        conf evidence_strength = verify.combine_sources([
+            systematic_review,  // Highest level of evidence
+            meta_analysis,     // Strong evidence
+            trials,           // Direct evidence
+            related_research  // Supporting evidence
+        ])
+        
+        // Research conclusions based on evidence strength
+        uncertain if (evidence_strength ~> 0.9) {
+            print("Strong scientific consensus")
+            
+            // Generate research summary
+            let summary = pattern.transform(
+                research_question,
+                "Generate a structured research summary following PRISMA guidelines"
+            )
+        } else uncertain if (evidence_strength ~> 0.7) {
+            print("Emerging evidence with some limitations")
+            
+            // Identify research gaps
+            let gaps = pattern.transform(
+                research_question,
+                "Identify key research gaps and future study directions"
+            )
+        } else {
+            print("Insufficient evidence - more research needed")
+        }
+    }
+} 

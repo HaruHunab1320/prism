@@ -62,7 +62,7 @@ impl Tensor {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Context {
     name: String,
     vocabulary: Vec<String>,
@@ -92,8 +92,20 @@ impl Context {
         &self.name
     }
 
+    pub fn confidence_threshold(&self) -> f64 {
+        self.confidence_threshold
+    }
+
     pub fn validate_confidence(&self, confidence: &Confidence) -> bool {
         confidence.value() >= self.confidence_threshold
+    }
+
+    pub fn vocabulary(&self) -> &[String] {
+        &self.vocabulary
+    }
+
+    pub fn validation_sources(&self) -> &[String] {
+        &self.validation_sources
     }
 }
 

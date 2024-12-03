@@ -115,7 +115,8 @@ mod tests {
         let source = Confidence::new(0.8).unwrap();
         let flowed = engine.flow(&source, 0.9).unwrap();
         
-        assert_eq!(flowed.value(), 0.72);
+        let diff = (flowed.value() - 0.72).abs();
+        assert!(diff < 1e-10, "Expected approximately 0.72, got {}", flowed.value());
     }
 
     #[test]
