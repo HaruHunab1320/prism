@@ -1,0 +1,22 @@
+// Basic confidence declaration
+conf x = 0.8
+
+// Confidence flow
+x ~> 0.7
+
+// Uncertain control flow
+uncertain if (x ~> 0.7) {
+    conf y = 0.9
+} medium {
+    conf y = 0.5
+} low {
+    conf y = 0.2
+}
+
+// Context management
+in context Medical {
+    conf diagnosis = 0.8
+    verify against sources ["pubmed"] 0.9 {
+        conf treatment = 0.7
+    }
+} 
