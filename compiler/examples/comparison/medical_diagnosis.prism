@@ -1,27 +1,59 @@
 // Import required modules
 import { validate_symptom, semantic_match, get_disease_pattern } from medical;
 import { split, join } from utils;
+import { complete_with_config } from llm;
 
-// Process symptoms
-let symptoms = "severe headache, sensitivity to light, nausea";
+// Define symptoms and diseases
+let symptoms = ["fever", "cough", "fatigue"];
+let diseases = ["flu", "covid", "cold"];
+let results = [];
 
-// Validate and format symptoms
-let symptom_array = split(symptoms, ",");
-let formatted_symptoms = join(symptom_array, "; ");
+// Process each symptom
+for (let i = 0; i < symptoms.len(); i = i + 1) {
+    let symptom = symptoms[i];
+    let validated = medical.validate_symptom(symptom);
+    
+    if (validated > 0.5) {
+        let matches = [];
+        for (let j = 0; j < diseases.len(); j = j + 1) {
+            let disease = diseases[j];
+            let match = medical.semantic_match(symptom, disease);
+            let pattern = medical.get_disease_pattern(disease);
+            
+            matches.push({
+                disease: disease,
+                score: match,
+                typical_symptoms: pattern
+            });
+        }
+        
+        results.push({
+            symptom: symptom,
+            confidence: validated,
+            matches: matches
+        });
+    }
+}
 
-// Get individual symptom confidences
-let confidence = validate_symptom(symptoms);
+// Get additional context from LLM
+let config = {
+    temperature: 0.7,
+    max_tokens: 150
+};
 
-// Get diagnosis pattern
-let diagnosis = get_disease_pattern("migraine");
+let analysis = llm.complete_with_config(
+    `Analyze these medical results: ${results.to_string()}
+     Provide insights about the symptom-disease relationships.`,
+    config
+);
 
-// Check pattern match
-let pattern_match = semantic_match(symptoms, diagnosis);
-
-// Return structured results
+// Return comprehensive results
 {
-    symptoms: formatted_symptoms,
-    confidence: confidence,
-    diagnosis: diagnosis,
-    pattern_match: pattern_match
+    results: results,
+    analysis: analysis,
+    metadata: {
+        total_symptoms: symptoms.len(),
+        total_diseases: diseases.len(),
+        timestamp: utils.now()
+    }
 } 
