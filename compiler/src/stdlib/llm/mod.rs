@@ -1,5 +1,4 @@
 use crate::error::RuntimeError;
-use crate::interpreter::Interpreter;
 use crate::stdlib::Module;
 use crate::types::Value;
 use std::sync::Arc;

@@ -1,5 +1,4 @@
 use thiserror::Error;
-use crate::types::Value;
 use google_generative_ai_rs::v1::errors::GoogleAPIError;
 
 #[derive(Error, Debug)]

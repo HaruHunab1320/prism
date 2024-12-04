@@ -83,10 +83,4 @@ async fn run_comparison(interpreter: &mut Interpreter) -> Result<Value, RuntimeE
     ];
 
     interpreter.interpret(statements).await
-}
-
-fn parse(_code: &str) -> Result<Vec<Arc<Stmt>>, RuntimeError> {
-    // For now, we'll just return an empty vector
-    // The actual implementation is above in run_comparison
-    Ok(vec![])
 } 

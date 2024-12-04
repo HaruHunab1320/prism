@@ -5,7 +5,6 @@ pub mod utils;
 
 use std::collections::HashMap;
 use crate::types::Value;
-use crate::error::RuntimeError;
 
 #[derive(Clone)]
 pub struct Module {
