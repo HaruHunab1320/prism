@@ -12,6 +12,9 @@ serde_json = "1.0.96"
 google-generative-ai-rs = "0.3.2"
 futures = "0.3"
 dotenv = "0.15.0"
+colored = "2.0"
+miette = { version = "5.5", features = ["fancy"] }
+reqwest = { version = "0.11", features = ["json"] }
 
 [[example]]
 name = "medical_diagnosis"
@@ -20,4 +23,12 @@ path = "examples/medical_diagnosis.rs"
 [[example]]
 name = "comparison"
 path = "examples/comparison/run_comparison.rs"
+
+[lib]
+name = "prism"
+path = "src/lib.rs"
+
+[[bin]]
+name = "prism"
+path = "src/main.rs"
  

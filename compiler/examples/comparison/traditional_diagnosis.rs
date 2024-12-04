@@ -1,49 +1,29 @@
+use google_generative_ai_rs::v1::{
+    api::Client,
+    gemini::{Content, Part, Role, request::{Request, GenerationConfig}},
+};
 use std::error::Error;
-use std::time::Instant;
-use std::sync::Arc;
-use google_generative_ai_rs::v1::api::Client;
-use google_generative_ai_rs::v1::gemini::{Content, Part, Role};
-use google_generative_ai_rs::v1::gemini::request::{Request, GenerationConfig};
 
-// Traditional implementation requires explicit confidence handling
-#[derive(Debug, Clone)]
-pub struct SymptomValidation {
-    pub symptom: String,
-    pub confidence: f64,
-    pub validation_source: String,
+pub struct MedicalDiagnosisSystem {
+    client: Client,
 }
 
-#[derive(Debug)]
-pub struct DiagnosisResult {
-    pub condition: String,
-    pub confidence: f64,
-    pub supporting_evidence: Vec<String>,
-}
-
-pub struct TraditionalDiagnosisSystem {
-    client: Arc<Client>,
-}
-
-impl TraditionalDiagnosisSystem {
-    pub fn new(api_key: String) -> Self {
+impl MedicalDiagnosisSystem {
+    pub fn new(api_key: &str) -> Self {
         Self {
-            client: Arc::new(Client::new(api_key)),
+            client: Client::new(api_key.to_string()),
         }
     }
 
-    pub async fn validate_symptom(&self, symptom: &str) -> Result<SymptomValidation, Box<dyn Error>> {
-        let start = Instant::now();
-
+    pub async fn validate_symptom(&self, symptom: &str) -> Result<f64, Box<dyn Error>> {
         let prompt = format!(
-            "You are a medical symptom validator. Your task is to validate if '{}' is a clear and valid medical symptom.\n\
-            Return ONLY a number between 0 and 1 representing the confidence score, where:\n\
-            1.0 = Clear, specific, well-defined medical symptom (e.g., 'fever', 'shortness of breath')\n\
-            0.7-0.9 = Valid but could be more specific (e.g., 'pain', 'discomfort')\n\
-            0.4-0.6 = Ambiguous or general (e.g., 'feeling bad', 'not well')\n\
-            0.0-0.3 = Not a valid medical symptom (e.g., 'blue thoughts', 'happy')\n\n\
-            Respond with ONLY the number, no other text.\n\
-            Example responses: '0.95' or '0.3' or '0.0'\n\n\
-            Confidence score:",
+            "Validate if '{}' is a clear and valid medical symptom. \
+            Return a confidence score between 0 and 1, where:\n\
+            1.0 = Clear, specific medical symptom\n\
+            0.7-0.9 = Valid but could be more specific\n\
+            0.4-0.6 = Ambiguous or general\n\
+            0.0-0.3 = Not a valid medical symptom\n\
+            Return only the number.",
             symptom
         );
 
@@ -62,7 +42,7 @@ impl TraditionalDiagnosisSystem {
             top_p: Some(1.0),
             top_k: Some(1),
             candidate_count: Some(1),
-            max_output_tokens: Some(5),
+            max_output_tokens: Some(1),
             stop_sequences: Some(vec![]),
         };
 
@@ -73,50 +53,53 @@ impl TraditionalDiagnosisSystem {
             tools: vec![],
         };
 
-        let response = (*self.client).post(60, &request).await?.rest().ok_or_else(|| "No response received")?;
-        let confidence = if let Some(text) = response.candidates.first().and_then(|c| c.content.parts.first()).and_then(|p| p.text.as_ref()) {
-            // Clean up the response text to handle potential formatting
-            let cleaned_text = text.trim()
-                .replace("Confidence score:", "")
-                .replace("confidence:", "")
-                .trim()
-                .to_string();
-            cleaned_text.parse::<f64>().map_err(|_| format!("Failed to parse confidence from response: {}", text))?
-        } else {
-            return Err("No response text received".into());
-        };
+        let response = self.client.post(60, &request).await?
+            .rest()
+            .ok_or("No response received")?;
 
-        let duration = start.elapsed();
-        println!("Traditional validate_symptom took: {:?}", duration);
+        let text = response.candidates.first()
+            .and_then(|c| c.content.parts.first())
+            .and_then(|p| p.text.as_ref())
+            .ok_or("No response text received")?;
 
-        Ok(SymptomValidation {
-            symptom: symptom.to_string(),
-            confidence,
-            validation_source: "Gemini API".to_string(),
+        text.trim().parse::<f64>()
+            .map_err(|e| format!("Failed to parse confidence: {}", e).into())
+    }
+
+    pub async fn process_symptoms(&self, symptoms: &str) -> Result<DiagnosisResult, Box<dyn Error>> {
+        // Split and format symptoms
+        let symptom_list: Vec<String> = symptoms
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
+
+        // Validate each symptom
+        let mut total_confidence = 0.0;
+        for symptom in &symptom_list {
+            total_confidence += self.validate_symptom(symptom).await?;
+        }
+        let avg_confidence = total_confidence / symptom_list.len() as f64;
+
+        // Get diagnosis
+        let formatted_symptoms = symptom_list.join("; ");
+        let diagnosis = self.get_diagnosis(&formatted_symptoms).await?;
+
+        // Check against known patterns
+        let match_score = self.check_pattern(&formatted_symptoms, &diagnosis).await?;
+
+        Ok(DiagnosisResult {
+            formatted_symptoms,
+            confidence: avg_confidence,
+            diagnosis,
+            pattern_match: match_score,
         })
     }
 
-    pub async fn semantic_match(&self, symptoms: &str, pattern: &str) -> Result<f64, Box<dyn Error>> {
-        let start = Instant::now();
-
+    pub async fn get_diagnosis(&self, symptoms: &str) -> Result<String, Box<dyn Error>> {
         let prompt = format!(
-            "You are a medical symptom matcher. Compare these two sets of symptoms and return ONLY a number between 0 and 1 indicating how well they match.\n\n\
-            Set 1: '{}'\n\
-            Set 2: '{}'\n\n\
-            Consider:\n\
-            - Symptom overlap (exact and semantic matches)\n\
-            - Symptom specificity\n\
-            - Pattern completeness\n\n\
-            Examples:\n\
-            - Perfect match = 1.0\n\
-            - Strong match with minor variations = 0.8-0.9\n\
-            - Moderate match with some differences = 0.5-0.7\n\
-            - Poor match with major differences = 0.2-0.4\n\
-            - No meaningful match = 0.0-0.1\n\n\
-            Return ONLY the number, no other text.\n\
-            Example responses: '0.95' or '0.3' or '0.0'\n\n\
-            Match score:",
-            symptoms, pattern
+            "Based on these symptoms: {}\n\
+            Provide a likely diagnosis. Be concise.",
+            symptoms
         );
 
         let content = Content {
@@ -130,70 +113,7 @@ impl TraditionalDiagnosisSystem {
         };
 
         let config = GenerationConfig {
-            temperature: Some(0.0),
-            top_p: Some(1.0),
-            top_k: Some(1),
-            candidate_count: Some(1),
-            max_output_tokens: Some(5),
-            stop_sequences: Some(vec![]),
-        };
-
-        let request = Request {
-            contents: vec![content],
-            generation_config: Some(config),
-            safety_settings: vec![],
-            tools: vec![],
-        };
-
-        let response = (*self.client).post(60, &request).await?.rest().ok_or_else(|| "No response received")?;
-        let confidence = if let Some(text) = response.candidates.first().and_then(|c| c.content.parts.first()).and_then(|p| p.text.as_ref()) {
-            // Clean up the response text to handle potential formatting
-            let cleaned_text = text.trim()
-                .replace("Match score:", "")
-                .replace("score:", "")
-                .trim()
-                .to_string();
-            cleaned_text.parse::<f64>().map_err(|_| format!("Failed to parse confidence from response: {}", text))?
-        } else {
-            return Err("No response text received".into());
-        };
-
-        let duration = start.elapsed();
-        println!("Traditional semantic_match took: {:?}", duration);
-
-        Ok(confidence)
-    }
-
-    pub async fn get_disease_pattern(&self, disease: &str) -> Result<String, Box<dyn Error>> {
-        let start = Instant::now();
-
-        let prompt = format!(
-            "You are a medical knowledge base. List the most common symptoms for {}.\n\
-            Rules:\n\
-            1. Return ONLY a comma-separated list of symptoms\n\
-            2. Focus on specific, observable symptoms\n\
-            3. List them in order of frequency/importance\n\
-            4. Use standard medical terminology\n\
-            5. Include 5-10 key symptoms\n\
-            6. NO additional text or explanations\n\n\
-            Example response format:\n\
-            fever, cough, fatigue, shortness of breath, body aches\n\n\
-            Symptoms:",
-            disease
-        );
-
-        let content = Content {
-            parts: vec![Part {
-                text: Some(prompt),
-                inline_data: None,
-                file_data: None,
-                video_metadata: None,
-            }],
-            role: Role::User,
-        };
-
-        let config = GenerationConfig {
-            temperature: Some(0.0),
+            temperature: Some(0.7),
             top_p: Some(1.0),
             top_k: Some(1),
             candidate_count: Some(1),
@@ -208,19 +128,93 @@ impl TraditionalDiagnosisSystem {
             tools: vec![],
         };
 
-        let response = (*self.client).post(60, &request).await?.rest().ok_or_else(|| "No response received")?;
-        let pattern = if let Some(text) = response.candidates.first().and_then(|c| c.content.parts.first()).and_then(|p| p.text.as_ref()) {
-            text.trim()
-                .replace("Symptoms:", "")
-                .trim()
-                .to_string()
-        } else {
-            return Err("No response text received".into());
+        let response = self.client.post(60, &request).await?
+            .rest()
+            .ok_or("No response received")?;
+
+        response.candidates.first()
+            .and_then(|c| c.content.parts.first())
+            .and_then(|p| p.text.as_ref())
+            .map(|t| t.trim().to_string())
+            .ok_or_else(|| "No diagnosis received".into())
+    }
+
+    pub async fn check_pattern(&self, symptoms: &str, diagnosis: &str) -> Result<f64, Box<dyn Error>> {
+        let prompt = format!(
+            "Compare these symptoms: '{}'\n\
+            with the typical pattern for: '{}'\n\
+            Return a confidence score between 0 and 1 indicating how well they match.\n\
+            Consider symptom overlap and specificity.\n\
+            Return only the number.",
+            symptoms, diagnosis
+        );
+
+        let content = Content {
+            parts: vec![Part {
+                text: Some(prompt),
+                inline_data: None,
+                file_data: None,
+                video_metadata: None,
+            }],
+            role: Role::User,
         };
 
-        let duration = start.elapsed();
-        println!("Traditional get_disease_pattern took: {:?}", duration);
+        let config = GenerationConfig {
+            temperature: Some(0.0),
+            top_p: Some(1.0),
+            top_k: Some(1),
+            candidate_count: Some(1),
+            max_output_tokens: Some(1),
+            stop_sequences: Some(vec![]),
+        };
 
-        Ok(pattern)
+        let request = Request {
+            contents: vec![content],
+            generation_config: Some(config),
+            safety_settings: vec![],
+            tools: vec![],
+        };
+
+        let response = self.client.post(60, &request).await?
+            .rest()
+            .ok_or("No response received")?;
+
+        let text = response.candidates.first()
+            .and_then(|c| c.content.parts.first())
+            .and_then(|p| p.text.as_ref())
+            .ok_or("No response text received")?;
+
+        text.trim().parse::<f64>()
+            .map_err(|e| format!("Failed to parse match score: {}", e).into())
     }
+}
+
+#[derive(Debug)]
+pub struct DiagnosisResult {
+    pub formatted_symptoms: String,
+    pub confidence: f64,
+    pub diagnosis: String,
+    pub pattern_match: f64,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // Load API key from environment
+    let api_key = std::env::var("GOOGLE_API_KEY")?;
+    
+    // Initialize the system
+    let system = MedicalDiagnosisSystem::new(&api_key);
+    
+    // Process symptoms
+    let symptoms = "severe headache, sensitivity to light, nausea";
+    let result = system.process_symptoms(symptoms).await?;
+    
+    // Output results
+    println!("Diagnosis Results:");
+    println!("Symptoms: {}", result.formatted_symptoms);
+    println!("Symptom Confidence: {:.2}", result.confidence);
+    println!("Diagnosis: {}", result.diagnosis);
+    println!("Pattern Match: {:.2}", result.pattern_match);
+    
+    Ok(())
 } 

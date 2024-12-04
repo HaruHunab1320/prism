@@ -1,0 +1,36 @@
+// Import required modules
+import { validate_symptom, semantic_match } from medical;
+import { split, join } from utils;
+import { complete_with_config } from llm;
+
+// Example of using medical module
+let symptoms = "severe headache, sensitivity to light, nausea";
+let confidence = validate_symptom(symptoms);
+
+// Using utils module to process symptoms
+let symptom_array = split(symptoms, ",");
+let formatted_symptoms = join(symptom_array, "; ");
+
+// Using LLM module with custom configuration
+let config = {
+    temperature: 0.7,
+    max_tokens: 100
+};
+
+let diagnosis = complete_with_config(
+    `Analyze these symptoms: ${formatted_symptoms}
+     Provide a possible diagnosis.`,
+    config
+);
+
+// Using semantic matching to verify diagnosis
+let migraine_pattern = "throbbing headache, photophobia, nausea, vomiting";
+let match_score = semantic_match(symptoms, migraine_pattern);
+
+// Output results
+{
+    symptoms: formatted_symptoms,
+    confidence: confidence,
+    diagnosis: diagnosis,
+    pattern_match: match_score
+} 

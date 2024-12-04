@@ -1,0 +1,42 @@
+// Import required functionality
+import { validate_symptom, semantic_match, get_disease_pattern } from medical;
+import { split, join } from utils;
+import { complete_with_config } from llm;
+
+// Process symptoms
+let symptoms = "severe headache, sensitivity to light, nausea";
+
+// Validate and format symptoms
+let symptom_array = split(symptoms, ",");
+let formatted_symptoms = join(symptom_array, "; ");
+
+// Get individual symptom confidences
+let confidences = symptom_array.map(symptom => validate_symptom(symptom));
+let avg_confidence = confidences.reduce((a, b) => a + b) / confidences.length;
+
+// Get diagnosis with temperature for creativity
+let config = {
+    temperature: 0.7,
+    max_tokens: 100
+};
+
+let diagnosis = complete_with_config(
+    `Based on these symptoms: ${formatted_symptoms}
+     Provide a likely diagnosis. Be concise.`,
+    config
+);
+
+// Get typical pattern for the diagnosis
+let typical_pattern = get_disease_pattern(diagnosis);
+
+// Check how well symptoms match the typical pattern
+let pattern_match = semantic_match(formatted_symptoms, typical_pattern);
+
+// Return structured results
+{
+    symptoms: formatted_symptoms,
+    confidence: avg_confidence,
+    diagnosis: diagnosis,
+    pattern_match: pattern_match,
+    typical_pattern: typical_pattern
+} 

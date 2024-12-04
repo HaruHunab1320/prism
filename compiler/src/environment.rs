@@ -1,15 +1,24 @@
 use std::collections::HashMap;
 use crate::types::Value;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Environment {
     values: HashMap<String, Value>,
+    enclosing: Option<Box<Environment>>,
 }
 
 impl Environment {
     pub fn new() -> Self {
         Self {
             values: HashMap::new(),
+            enclosing: None,
+        }
+    }
+
+    pub fn with_enclosing(enclosing: Environment) -> Self {
+        Self {
+            values: HashMap::new(),
+            enclosing: Some(Box::new(enclosing)),
         }
     }
 
@@ -18,15 +27,33 @@ impl Environment {
     }
 
     pub fn get(&self, name: &str) -> Option<Value> {
-        self.values.get(name).cloned()
+        if let Some(value) = self.values.get(name) {
+            Some(value.clone())
+        } else if let Some(enclosing) = &self.enclosing {
+            enclosing.get(name)
+        } else {
+            None
+        }
     }
 
     pub fn assign(&mut self, name: &str, value: Value) -> bool {
         if self.values.contains_key(name) {
             self.values.insert(name.to_string(), value);
             true
+        } else if let Some(enclosing) = &mut self.enclosing {
+            enclosing.assign(name, value)
         } else {
             false
+        }
+    }
+
+    pub fn get_environment_mut(&mut self, name: &str) -> Option<&mut Environment> {
+        if let Some(Value::Object(_)) = self.values.get(name) {
+            Some(self)
+        } else if let Some(enclosing) = &mut self.enclosing {
+            enclosing.get_environment_mut(name)
+        } else {
+            None
         }
     }
 }

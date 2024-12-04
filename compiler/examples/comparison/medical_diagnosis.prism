@@ -1,0 +1,27 @@
+// Import required modules
+import { validate_symptom, semantic_match, get_disease_pattern } from medical;
+import { split, join } from utils;
+
+// Process symptoms
+let symptoms = "severe headache, sensitivity to light, nausea";
+
+// Validate and format symptoms
+let symptom_array = split(symptoms, ",");
+let formatted_symptoms = join(symptom_array, "; ");
+
+// Get individual symptom confidences
+let confidence = validate_symptom(symptoms);
+
+// Get diagnosis pattern
+let diagnosis = get_disease_pattern("migraine");
+
+// Check pattern match
+let pattern_match = semantic_match(symptoms, diagnosis);
+
+// Return structured results
+{
+    symptoms: formatted_symptoms,
+    confidence: confidence,
+    diagnosis: diagnosis,
+    pattern_match: pattern_match
+} 

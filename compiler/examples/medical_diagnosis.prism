@@ -1,44 +1,4 @@
-// Medical Diagnosis System in Prism
-// Demonstrates LLM-centric programming approach
-
-// Function to process a list of symptoms and return validations
-fn validate_symptoms(symptoms) {
-    let results = [];
-    for symptom in symptoms {
-        let confidence = llm.validate_symptom(symptom);
-        results.push({
-            symptom: symptom,
-            confidence: confidence
-        });
-    }
-    return results;
-}
-
-// Function to check symptoms against a disease pattern
-fn check_disease(symptoms, disease) {
-    let pattern = llm.get_disease_pattern(disease);
-    let match_score = llm.semantic_match(symptoms, pattern);
-    return {
-        disease: disease,
-        pattern: pattern,
-        confidence: match_score
-    };
-}
-
-// Test data
-let test_symptoms = ["fever", "cough", "fatigue", "shortness of breath"];
-let test_disease = "COVID-19";
-
-// Run diagnosis
-let symptom_validations = validate_symptoms(test_symptoms);
-println("Symptom Validations:");
-for validation in symptom_validations {
-    println(validation.symptom + ": " + validation.confidence);
-}
-
-let diagnosis = check_disease(test_symptoms.join(", "), test_disease);
-println("\nDisease Pattern Match:");
-println("Disease: " + diagnosis.disease);
-println("Pattern: " + diagnosis.pattern);
-println("Match Confidence: " + diagnosis.confidence);
+let symptoms = "severe headache, sensitivity to light, nausea";
+let confidence = llm.validate_symptom(symptoms);
+confidence;
   

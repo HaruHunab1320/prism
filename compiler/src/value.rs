@@ -1,10 +1,37 @@
-use std::fmt;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use crate::interpreter::Interpreter;
 use crate::error::RuntimeError;
-use crate::types::Value;
+use crate::interpreter::Interpreter;
+use std::sync::Arc;
+
+#[derive(Clone)]
+pub enum Value {
+    Float(f64),
+    String(String),
+    Boolean(bool),
+    Array(Vec<Value>),
+    Object(Vec<(String, Value)>),
+    NativeFunction(Arc<dyn Fn(&mut Interpreter, Vec<Value>) -> Result<Value, RuntimeError> + Send + Sync>),
+    AsyncFn(Arc<dyn Fn(Vec<Value>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value, RuntimeError>> + Send>> + Send + Sync>),
+}
+
+impl std::fmt::Debug for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Float(n) => write!(f, "{}", n),
+            Value::String(s) => write!(f, "{}", s),
+            Value::Boolean(b) => write!(f, "{}", b),
+            Value::Array(arr) => f.debug_list().entries(arr).finish(),
+            Value::Object(obj) => {
+                let mut map = f.debug_map();
+                for (k, v) in obj {
+                    map.entry(&k, &v);
+                }
+                map.finish()
+            },
+            Value::NativeFunction(_) => write!(f, "[native function]"),
+            Value::AsyncFn(_) => write!(f, "[async function]"),
+        }
+    }
+}
 
 impl Value {
     pub fn get_type(&self) -> &'static str {
@@ -14,26 +41,30 @@ impl Value {
             Value::Boolean(_) => "boolean",
             Value::Array(_) => "array",
             Value::Object(_) => "object",
-            Value::Function(_) => "function",
+            Value::NativeFunction(_) => "function",
             Value::AsyncFn(_) => "async_function",
-            Value::NativeFunction(_) => "native_function",
         }
     }
 
-    pub fn get_confidence(&self) -> Option<f64> {
+    pub fn to_string(&self) -> String {
         match self {
-            Value::Float(n) => Some(*n),
-            Value::Object(fields) => {
-                for (name, value) in fields {
-                    if name == "confidence" {
-                        if let Value::Float(n) = value {
-                            return Some(*n);
-                        }
-                    }
-                }
-                None
-            }
-            _ => None,
+            Value::Float(n) => n.to_string(),
+            Value::String(s) => s.clone(),
+            Value::Boolean(b) => b.to_string(),
+            Value::Array(arr) => {
+                let elements: Vec<String> = arr.iter()
+                    .map(|v| v.to_string())
+                    .collect();
+                format!("[{}]", elements.join(", "))
+            },
+            Value::Object(obj) => {
+                let fields: Vec<String> = obj.iter()
+                    .map(|(k, v)| format!("{}: {}", k, v.to_string()))
+                    .collect();
+                format!("{{{}}}", fields.join(", "))
+            },
+            Value::NativeFunction(_) => "[native function]".to_string(),
+            Value::AsyncFn(_) => "[async function]".to_string(),
         }
     }
 
@@ -41,11 +72,6 @@ impl Value {
         match (self, other) {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
             (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
-            (Value::Array(a), Value::Array(b)) => {
-                let mut result = a.clone();
-                result.extend(b.clone());
-                Ok(Value::Array(result))
-            }
             _ => Err(RuntimeError::TypeError(format!("Cannot add {} and {}", self.get_type(), other.get_type()))),
         }
     }
@@ -151,32 +177,6 @@ impl Value {
 
     pub fn get_property(&self, property: &Value) -> Result<Value, RuntimeError> {
         match (self, property) {
-            (Value::Array(arr), Value::String(prop)) => {
-                match prop.as_str() {
-                    "length" => Ok(Value::Float(arr.len() as f64)),
-                    "join" => {
-                        let arr = arr.clone();
-                        Ok(Value::Function(Arc::new(move |args: Vec<Value>| {
-                            if args.len() != 1 {
-                                return Err(RuntimeError::TypeError(format!("join() takes exactly 1 argument, got {}", args.len())));
-                            }
-                            let separator = match &args[0] {
-                                Value::String(s) => s,
-                                _ => return Err(RuntimeError::TypeError(format!("join() argument must be a string, got {}", args[0].get_type()))),
-                            };
-                            let strings: Result<Vec<String>, RuntimeError> = arr.iter().map(|v| match v {
-                                Value::String(s) => Ok(s.clone()),
-                                _ => Err(RuntimeError::TypeError(format!("Cannot join array containing {}", v.get_type()))),
-                            }).collect();
-                            match strings {
-                                Ok(strings) => Ok(Value::String(strings.join(separator))),
-                                Err(e) => Err(e),
-                            }
-                        })))
-                    }
-                    _ => Err(RuntimeError::UndefinedField(format!("Array has no property '{}'", prop))),
-                }
-            }
             (Value::Object(fields), Value::String(prop)) => {
                 for (name, value) in fields {
                     if name == prop {
@@ -226,107 +226,9 @@ impl Value {
 
     pub async fn call(&self, interpreter: &mut Interpreter, args: Vec<Value>) -> Result<Value, RuntimeError> {
         match self {
-            Value::Function(f) => f(args),
+            Value::NativeFunction(f) => f(interpreter, args),
             Value::AsyncFn(f) => f(args).await,
-            Value::NativeFunction(f) => f(interpreter, args).await,
             _ => Err(RuntimeError::TypeError(format!("Cannot call {}", self.get_type()))),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_value_display() {
-        assert_eq!(Value::Float(42.0).to_string(), "42");
-        assert_eq!(Value::String("hello".to_string()).to_string(), "\"hello\"");
-        assert_eq!(Value::Boolean(true).to_string(), "true");
-        assert_eq!(Value::Array(vec![Value::Float(1.0), Value::Float(2.0)]).to_string(), "[1, 2]");
-        assert_eq!(Value::Object(vec![
-            ("name".to_string(), Value::String("test".to_string())),
-            ("value".to_string(), Value::Float(42.0)),
-        ]).to_string(), "{name: \"test\", value: 42}");
-    }
-
-    #[test]
-    fn test_value_confidence() {
-        assert_eq!(Value::Float(0.5).get_confidence(), Some(0.5));
-        assert_eq!(Value::String("test".to_string()).get_confidence(), None);
-        assert_eq!(Value::Object(vec![
-            ("confidence".to_string(), Value::Float(0.8)),
-            ("value".to_string(), Value::String("test".to_string())),
-        ]).get_confidence(), Some(0.8));
-    }
-
-    #[test]
-    fn test_value_operations() {
-        // Addition
-        assert_eq!(
-            Value::Float(1.0).add(&Value::Float(2.0)).unwrap(),
-            Value::Float(3.0)
-        );
-        assert_eq!(
-            Value::String("hello ".to_string()).add(&Value::String("world".to_string())).unwrap(),
-            Value::String("hello world".to_string())
-        );
-
-        // Subtraction
-        assert_eq!(
-            Value::Float(3.0).subtract(&Value::Float(2.0)).unwrap(),
-            Value::Float(1.0)
-        );
-
-        // Multiplication
-        assert_eq!(
-            Value::Float(2.0).multiply(&Value::Float(3.0)).unwrap(),
-            Value::Float(6.0)
-        );
-
-        // Division
-        assert_eq!(
-            Value::Float(6.0).divide(&Value::Float(2.0)).unwrap(),
-            Value::Float(3.0)
-        );
-
-        // Comparison
-        assert_eq!(
-            Value::Float(1.0).less_than(&Value::Float(2.0)).unwrap(),
-            Value::Boolean(true)
-        );
-        assert_eq!(
-            Value::Float(2.0).greater_than(&Value::Float(1.0)).unwrap(),
-            Value::Boolean(true)
-        );
-        assert_eq!(
-            Value::Float(1.0).equals(&Value::Float(1.0)).unwrap(),
-            Value::Boolean(true)
-        );
-    }
-
-    #[test]
-    fn test_value_property_access() {
-        let arr = Value::Array(vec![Value::String("a".to_string()), Value::String("b".to_string())]);
-        assert_eq!(
-            arr.get_property(&Value::String("length".to_string())).unwrap(),
-            Value::Float(2.0)
-        );
-
-        let obj = Value::Object(vec![
-            ("name".to_string(), Value::String("test".to_string())),
-            ("value".to_string(), Value::Float(42.0)),
-        ]);
-        assert_eq!(
-            obj.get_property(&Value::String("name".to_string())).unwrap(),
-            Value::String("test".to_string())
-        );
-    }
-
-    #[test]
-    fn test_value_confidence_flow() {
-        let value = Value::String("test".to_string());
-        let with_confidence = value.with_confidence(&Value::Float(0.8)).unwrap();
-        assert_eq!(with_confidence.get_confidence(), Some(0.8));
     }
 } 

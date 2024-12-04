@@ -4,13 +4,12 @@ pub mod error;
 pub mod interpreter;
 pub mod lexer;
 pub mod parser;
+pub mod stdlib;
 pub mod types;
 pub mod value;
-pub mod stdlib;
 
 pub use interpreter::Interpreter;
-pub use lexer::Lexer;
 pub use parser::Parser;
-pub use types::Value;
+pub use lexer::Lexer;
 pub use error::RuntimeError;
-pub use ast::{Expr, Stmt}; 
+pub use types::Value; 

@@ -1,64 +1,71 @@
 use std::fmt;
+use std::sync::Arc;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Float(f64),
     String(String),
     Boolean(bool),
     Identifier(String),
-    Array(Vec<Expr>),
-    Object(Vec<(String, Expr)>),
+    Array(Vec<Arc<Expr>>),
+    Object(Vec<(String, Arc<Expr>)>),
     Binary {
-        left: Box<Expr>,
+        left: Arc<Expr>,
         operator: String,
-        right: Box<Expr>,
+        right: Arc<Expr>,
     },
     Unary {
         operator: String,
-        operand: Box<Expr>,
+        operand: Arc<Expr>,
     },
     Call {
-        function: Box<Expr>,
-        arguments: Vec<Expr>,
+        function: Arc<Expr>,
+        arguments: Vec<Arc<Expr>>,
     },
     Index {
-        array: Box<Expr>,
-        index: Box<Expr>,
+        array: Arc<Expr>,
+        index: Arc<Expr>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+unsafe impl Send for Expr {}
+unsafe impl Sync for Expr {}
+
+#[derive(Debug, Clone)]
 pub enum Stmt {
-    Expression(Expr),
+    Expression(Arc<Expr>),
     Let {
         name: String,
-        initializer: Expr,
+        initializer: Arc<Expr>,
     },
-    Block(Vec<Stmt>),
+    Block(Vec<Arc<Stmt>>),
     If {
-        condition: Expr,
-        then_branch: Box<Stmt>,
-        else_branch: Option<Box<Stmt>>,
+        condition: Arc<Expr>,
+        then_branch: Arc<Stmt>,
+        else_branch: Option<Arc<Stmt>>,
     },
     While {
-        condition: Expr,
-        body: Box<Stmt>,
+        condition: Arc<Expr>,
+        body: Arc<Stmt>,
     },
     Function {
         name: String,
         params: Vec<String>,
-        body: Box<Stmt>,
+        body: Arc<Stmt>,
     },
-    Return(Expr),
+    Return(Arc<Expr>),
     Break,
     Continue,
     TryCatch {
-        try_block: Box<Stmt>,
+        try_block: Arc<Stmt>,
         catch_variable: String,
-        catch_block: Box<Stmt>,
+        catch_block: Arc<Stmt>,
     },
-    Throw(Expr),
+    Throw(Arc<Expr>),
 }
+
+unsafe impl Send for Stmt {}
+unsafe impl Sync for Stmt {}
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -133,20 +140,13 @@ impl fmt::Display for Stmt {
                 write!(f, "while {} {}", condition, body)
             }
             Stmt::Function { name, params, body } => {
-                write!(f, "fn {}(", name)?;
-                for (i, param) in params.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", param)?;
-                }
-                write!(f, ") {}", body)
+                write!(f, "fn {}({}) {}", name, params.join(", "), body)
             }
             Stmt::Return(expr) => write!(f, "return {};", expr),
             Stmt::Break => write!(f, "break;"),
             Stmt::Continue => write!(f, "continue;"),
             Stmt::TryCatch { try_block, catch_variable, catch_block } => {
-                write!(f, "try {} catch {} {}", try_block, catch_variable, catch_block)
+                write!(f, "try {} catch ({}) {}", try_block, catch_variable, catch_block)
             }
             Stmt::Throw(expr) => write!(f, "throw {};", expr),
         }
@@ -160,9 +160,9 @@ mod tests {
     #[test]
     fn test_expr_display() {
         let expr = Expr::Binary {
-            left: Box::new(Expr::Float(1.0)),
+            left: Arc::new(Expr::Float(1.0)),
             operator: "+".to_string(),
-            right: Box::new(Expr::Float(2.0)),
+            right: Arc::new(Expr::Float(2.0)),
         };
         assert_eq!(expr.to_string(), "(1 + 2)");
     }
@@ -172,7 +172,7 @@ mod tests {
         let stmt = Stmt::Function {
             name: "test".to_string(),
             params: vec!["x".to_string(), "y".to_string()],
-            body: Box::new(Stmt::Return(Expr::Float(1.0))),
+            body: Arc::new(Stmt::Return(Arc::new(Expr::Float(1.0)))),
         };
         assert_eq!(
             stmt.to_string(),
