@@ -1,141 +1,44 @@
-// Medical Diagnosis System with Confidence Tracking
-// This demo shows how Prism handles uncertainty in medical diagnoses
+// Medical Diagnosis System in Prism
+// Demonstrates LLM-centric programming approach
 
-// Initialize metrics
-let total_diagnoses = 0.0;
-let correct_diagnoses = 0.0;
-let average_confidence = 0.0;
-let false_positives = 0.0;
-let false_negatives = 0.0;
-
-// Symptom confidence calculation with context
-fn calculate_symptom_confidence(symptoms) {
-    let total_confidence = 0.0;
-    let i = 0;
-    
-    while (i < symptoms.length) {
-        let symptom = symptoms[i];
-        // Use LLM to validate symptom description
-        let validated = llm.validate_symptom(symptom) ~> 0.85;
-        total_confidence = total_confidence + validated;
-        i = i + 1;
+// Function to process a list of symptoms and return validations
+fn validate_symptoms(symptoms) {
+    let results = [];
+    for symptom in symptoms {
+        let confidence = llm.validate_symptom(symptom);
+        results.push({
+            symptom: symptom,
+            confidence: confidence
+        });
     }
-    
-    return (total_confidence / symptoms.length) ~> 0.85;
+    return results;
 }
 
-// Disease pattern matching with confidence
-fn match_disease_pattern(symptoms, disease_pattern) {
-    let match_score = llm.semantic_match(
-        symptoms.join(", "),
-        disease_pattern
-    ) ~> 0.75;
-    
-    return match_score;
-}
-
-// Main diagnosis function
-fn diagnose(symptoms, actual_condition) {
-    // Calculate base confidence from symptoms
-    let symptom_confidence = calculate_symptom_confidence(symptoms);
-    
-    // Get possible conditions from medical database
-    let conditions = [
-        "flu",
-        "covid19",
-        "common_cold",
-        "allergies",
-        "bronchitis"
-    ];
-    
-    let best_match = "";
-    let highest_confidence = 0.0;
-    
-    // Match against each condition
-    let i = 0;
-    while (i < conditions.length) {
-        let condition = conditions[i];
-        let pattern = llm.get_disease_pattern(condition);
-        let match_confidence = match_disease_pattern(symptoms, pattern);
-        
-        if (match_confidence > highest_confidence) {
-            highest_confidence = match_confidence;
-            best_match = condition;
-        }
-        i = i + 1;
-    }
-    
-    // Final confidence combining symptom and pattern matching
-    let final_confidence = (symptom_confidence * highest_confidence) ~> 0.75;
-    
-    // Update metrics
-    total_diagnoses = total_diagnoses + 1.0;
-    average_confidence = (average_confidence * (total_diagnoses - 1.0) + final_confidence) / total_diagnoses;
-    
-    if (best_match == actual_condition) {
-        correct_diagnoses = correct_diagnoses + 1.0;
-    } else if (final_confidence > 0.8) {
-        false_positives = false_positives + 1.0;
-    } else {
-        false_negatives = false_negatives + 1.0;
-    }
-    
-    // Return diagnosis with confidence
+// Function to check symptoms against a disease pattern
+fn check_disease(symptoms, disease) {
+    let pattern = llm.get_disease_pattern(disease);
+    let match_score = llm.semantic_match(symptoms, pattern);
     return {
-        condition: best_match,
-        confidence: final_confidence
+        disease: disease,
+        pattern: pattern,
+        confidence: match_score
     };
 }
 
-// Test cases
-let test_cases = [
-    {
-        symptoms: ["fever", "cough", "fatigue", "body_aches"],
-        actual: "flu"
-    },
-    {
-        symptoms: ["fever", "dry_cough", "loss_of_taste", "shortness_of_breath"],
-        actual: "covid19"
-    },
-    {
-        symptoms: ["runny_nose", "sneezing", "mild_cough"],
-        actual: "common_cold"
-    },
-    {
-        symptoms: ["sneezing", "itchy_eyes", "runny_nose", "congestion"],
-        actual: "allergies"
-    }
-];
+// Test data
+let test_symptoms = ["fever", "cough", "fatigue", "shortness of breath"];
+let test_disease = "COVID-19";
 
-// Run diagnoses
-print("Running Medical Diagnosis Demo...\n");
-
-let i = 0;
-while (i < test_cases.length) {
-    let case = test_cases[i];
-    let result = diagnose(case.symptoms, case.actual);
-    
-    print("Symptoms: " + case.symptoms.join(", "));
-    print("Diagnosis: " + result.condition + " (Confidence: " + result.confidence + ")");
-    print("Actual Condition: " + case.actual);
-    print("---\n");
-    i = i + 1;
+// Run diagnosis
+let symptom_validations = validate_symptoms(test_symptoms);
+println("Symptom Validations:");
+for validation in symptom_validations {
+    println(validation.symptom + ": " + validation.confidence);
 }
 
-// Calculate and display metrics
-let accuracy = correct_diagnoses / total_diagnoses;
-let precision = correct_diagnoses / (correct_diagnoses + false_positives);
-let recall = correct_diagnoses / (correct_diagnoses + false_negatives);
-let f1_score = 2.0 * (precision * recall) / (precision + recall);
-
-print("\nPerformance Metrics:");
-print("-------------------");
-print("Total Diagnoses: " + total_diagnoses);
-print("Accuracy: " + accuracy);
-print("Precision: " + precision);
-print("Recall: " + recall);
-print("F1 Score: " + f1_score);
-print("Average Confidence: " + average_confidence);
-print("False Positive Rate: " + (false_positives / total_diagnoses));
-print("False Negative Rate: " + (false_negatives / total_diagnoses));
+let diagnosis = check_disease(test_symptoms.join(", "), test_disease);
+println("\nDisease Pattern Match:");
+println("Disease: " + diagnosis.disease);
+println("Pattern: " + diagnosis.pattern);
+println("Match Confidence: " + diagnosis.confidence);
   
