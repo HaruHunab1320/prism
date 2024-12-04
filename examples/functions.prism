@@ -1,0 +1,32 @@
+// Function with confidence level
+fn calculate_risk(age, health_score) ~0.85 {
+    // Higher age increases risk, better health score decreases it
+    return (age / 100.0) * (1.0 - health_score);
+}
+
+// Function without confidence level (pure calculation)
+fn normalize_score(score) {
+    if score > 1.0 {
+        return 1.0;
+    }
+    if score < 0.0 {
+        return 0.0;
+    }
+    return score;
+}
+
+// Function that combines results with confidence flow
+fn assess_insurance_risk(age, health_score) ~0.9 {
+    let base_risk = calculate_risk(age, health_score);
+    let normalized_risk = normalize_score(base_risk);
+    
+    // Use confidence flow to combine risk assessment with confidence
+    return normalized_risk ~> 0.95;
+}
+
+// Example usage
+let patient_age = 45;
+let health_score = 0.8;
+
+let risk_assessment = assess_insurance_risk(patient_age, health_score);
+print("Insurance risk assessment: " + risk_assessment); 

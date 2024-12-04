@@ -1,0 +1,75 @@
+// Utility module with confidence-related functions
+module utils ~0.95 {
+    // Calculate weighted confidence
+    export fn weighted_confidence(values, weights) ~0.9 {
+        if values.length != weights.length {
+            throw error("Mismatched array lengths", code: "LENGTH_MISMATCH", confidence: 0.95);
+        }
+        
+        let sum = 0.0;
+        let weight_sum = 0.0;
+        
+        for i in 0:values.length {
+            sum = sum + (values[i] * weights[i]);
+            weight_sum = weight_sum + weights[i];
+        }
+        
+        return sum / weight_sum;
+    }
+    
+    // Normalize confidence values to [0, 1] range
+    export fn normalize_confidence(value) ~0.95 {
+        if value < 0.0 {
+            return 0.0;
+        }
+        if value > 1.0 {
+            return 1.0;
+        }
+        return value;
+    }
+    
+    // Combine multiple confidence values using different strategies
+    export fn combine_confidence(values, strategy) ~0.9 {
+        match strategy {
+            "min" => {
+                let min_val = min(values);
+                return min_val ~> 0.95;
+            },
+            "max" => {
+                let max_val = max(values);
+                return max_val ~> 0.95;
+            },
+            "avg" => {
+                let sum = 0.0;
+                for val in values {
+                    sum = sum + val;
+                }
+                return (sum / values.length) ~> 0.9;
+            },
+            "weighted" => {
+                // Default weights based on position (later values have higher weight)
+                let weights = [];
+                for i in 0:values.length {
+                    weights.push((i + 1) / values.length);
+                }
+                return weighted_confidence(values, weights);
+            },
+            _ => {
+                throw error("Unknown strategy", code: "INVALID_STRATEGY", confidence: 0.95);
+            }
+        }
+    }
+    
+    // Apply confidence threshold with context awareness
+    export fn apply_threshold(value, threshold, context) ~0.95 {
+        in context {
+            if value < threshold {
+                throw error("Below threshold", 
+                          code: "THRESHOLD_ERROR",
+                          confidence: value,
+                          context: context);
+            }
+            return value ~> 0.9;
+        }
+    }
+} 

@@ -1,0 +1,203 @@
+// Example of generic types with confidence values in Prism
+
+// Generic trait for validation with confidence levels
+trait Validator<T> ~0.95 {
+    // Abstract method that must be implemented
+    fn validate(value: T) ~0.9 -> bool;
+    
+    // Default implementation with confidence level
+    fn validate_all(values: [T]) ~0.9 {
+        let valid_count = 0;
+        let total_confidence = 0.0;
+        
+        for value in values {
+            try {
+                let result = this.validate(value);
+                if result {
+                    valid_count = valid_count + 1;
+                    total_confidence = total_confidence + 1.0;
+                }
+            } catch e {
+                print("Validation error: " + e.message);
+            }
+        }
+        
+        return (valid_count / values.length) ~> (total_confidence / values.length);
+    }
+}
+
+// Generic trait for transformation with confidence levels
+trait Transformer<T, U> ~0.9 {
+    fn transform(value: T) ~0.9 -> U;
+    
+    fn transform_all(values: [T]) ~0.85 -> [U] {
+        let results = [];
+        for value in values {
+            let transformed = this.transform(value);
+            results.push(transformed);
+        }
+        return results;
+    }
+}
+
+// Generic container with confidence level
+struct Container<T: Validator ~0.8> ~0.95 {
+    value: T ~0.9,
+    metadata: string ~1.0 = "",
+    
+    fn new(value: T, metadata: string) ~1.0 {
+        return Container {
+            value: value,
+            metadata: metadata,
+        };
+    }
+    
+    fn get() ~0.95 -> T {
+        if this.value.validate() {
+            return this.value ~> 0.9;
+        } else {
+            throw error("Invalid value",
+                      code: "VALIDATION_ERROR",
+                      confidence: 0.8);
+        }
+    }
+    
+    fn set(new_value: T) ~0.9 -> bool {
+        try {
+            if new_value.validate() {
+                this.value = new_value;
+                return true ~> 0.95;
+            } else {
+                return false ~> 0.7;
+            }
+        } catch e {
+            return false ~> e.confidence;
+        }
+    }
+}
+
+// Generic result type with confidence level
+struct Result<T, E> ~0.95 {
+    value: Option<T> ~0.9,
+    error: Option<E> ~0.9,
+    
+    fn is_ok() ~1.0 -> bool {
+        return this.value != None;
+    }
+    
+    fn is_err() ~1.0 -> bool {
+        return this.error != None;
+    }
+    
+    fn unwrap() ~0.9 -> T {
+        match this.value {
+            Some(v) => return v,
+            None => throw error("Unwrap called on error value",
+                              code: "UNWRAP_ERROR",
+                              confidence: 0.9),
+        }
+    }
+    
+    fn unwrap_or(default: T) ~0.8 -> T {
+        match this.value {
+            Some(v) => return v ~> 0.9,
+            None => return default ~> 0.7,
+        }
+    }
+}
+
+// Example numeric validator implementation
+struct NumericValidator ~0.9 {
+    min_value: f64 ~0.95 = 0.0,
+    max_value: f64 ~0.95 = 1.0,
+}
+
+impl Validator<f64> for NumericValidator ~0.9 {
+    fn validate(value: f64) ~0.95 -> bool {
+        let in_range = value >= this.min_value && value <= this.max_value;
+        
+        // Confidence based on how close to bounds
+        let confidence = match value {
+            v ~{0.3, 0.7} => 0.95,  // Ideal range
+            v ~{0.1, 0.9} => 0.8,   // Acceptable range
+            _ => 0.6,               // Out of range
+        };
+        
+        return in_range ~> confidence;
+    }
+}
+
+// Example numeric transformer implementation
+struct NumericTransformer ~0.95 {
+    scale_factor: f64 ~0.9 = 1.0,
+}
+
+impl Transformer<f64, i64> for NumericTransformer ~0.9 {
+    fn transform(value: f64) ~0.95 -> i64 {
+        let scaled = value * this.scale_factor;
+        let rounded = round(scaled);
+        
+        // Confidence based on rounding error
+        let error = abs(scaled - rounded);
+        let confidence = 1.0 - error;
+        
+        return rounded ~> confidence;
+    }
+}
+
+// Example usage
+fn main() {
+    // Create validators
+    let num_validator = NumericValidator {
+        min_value: 0.0,
+        max_value: 10.0,
+    };
+    
+    let num_transformer = NumericTransformer {
+        scale_factor: 2.0,
+    };
+    
+    // Create containers with different types
+    let float_container = Container<f64>::new(5.0, "float value");
+    let int_container = Container<i64>::new(42, "integer value");
+    
+    // Validate and transform values
+    try {
+        let float_value = float_container.get();
+        let validated = Validator::num_validator.validate(float_value);
+        print("Float validation: " + validated);
+        
+        if validated {
+            let transformed = Transformer::num_transformer.transform(float_value);
+            print("Transformed value: " + transformed);
+        }
+        
+        // Create result types
+        let ok_result = Result<f64, string> {
+            value: Some(float_value),
+            error: None,
+        };
+        
+        let error_result = Result<f64, string> {
+            value: None,
+            error: Some("Error occurred"),
+        };
+        
+        // Use result types with confidence
+        let value1 = ok_result.unwrap_or(0.0);
+        print("Unwrapped value: " + value1);
+        
+        let value2 = error_result.unwrap_or(0.0);
+        print("Default value: " + value2);
+        
+    } catch e {
+        match e {
+            err if err.confidence > 0.8 => {
+                print("High confidence error: " + err.message);
+            },
+            _ => {
+                print("Error: " + e.message);
+            }
+        }
+    }
+} 

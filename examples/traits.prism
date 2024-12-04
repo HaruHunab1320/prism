@@ -1,0 +1,139 @@
+// Example of traits with confidence values in Prism
+
+// Define a trait for data validation with confidence levels
+trait Validator ~0.95 {
+    // Abstract method that must be implemented
+    fn validate(context: string) ~0.9;
+    
+    // Default implementation with confidence level
+    fn validate_with_threshold(value: f64, threshold: f64) ~0.95 {
+        if value < threshold {
+            throw error("Value below threshold",
+                      code: "THRESHOLD_ERROR",
+                      confidence: value / threshold,
+                      context: "validation");
+        }
+        return true ~> (value / threshold);
+    }
+    
+    // Default implementation that uses other methods
+    fn validate_all(values: [f64], context: string) ~0.9 {
+        let valid_count = 0;
+        let total_confidence = 0.0;
+        
+        for value in values {
+            try {
+                let result = this.validate(context);
+                if result {
+                    valid_count = valid_count + 1;
+                    total_confidence = total_confidence + value;
+                }
+            } catch e {
+                print("Validation error: " + e.message);
+            }
+        }
+        
+        return (valid_count / values.length) ~> (total_confidence / values.length);
+    }
+}
+
+// Define a trait for data transformation
+trait Transformer ~0.9 {
+    fn transform(value: f64) ~0.9;
+    
+    fn transform_all(values: [f64]) ~0.85 {
+        let results = [];
+        for value in values {
+            let transformed = this.transform(value);
+            results.push(transformed);
+        }
+        return results;
+    }
+}
+
+// Define a struct that implements both traits
+struct DataProcessor ~0.9 {
+    min_value: f64 ~0.95 = 0.0,
+    max_value: f64 ~0.95 = 1.0,
+    scale_factor: f64 ~0.9 = 1.0,
+    
+    fn new(min: f64, max: f64, scale: f64) ~1.0 {
+        return DataProcessor {
+            min_value: min,
+            max_value: max,
+            scale_factor: scale,
+        };
+    }
+}
+
+// Implement Validator trait for DataProcessor
+impl Validator for DataProcessor ~0.9 {
+    fn validate(context: string) ~0.95 {
+        in context {
+            let value = this.transform(this.min_value);
+            if value < 0.0 || value > 1.0 {
+                throw error("Value out of range",
+                          code: "RANGE_ERROR",
+                          confidence: 0.8,
+                          context: context);
+            }
+            
+            try {
+                return this.validate_with_threshold(value, 0.5);
+            } catch e {
+                match e {
+                    err if err.confidence < 0.7 => {
+                        return false ~> err.confidence;
+                    },
+                    _ => throw e,
+                }
+            }
+        }
+    }
+}
+
+// Implement Transformer trait for DataProcessor
+impl Transformer for DataProcessor ~0.95 {
+    fn transform(value: f64) ~0.9 {
+        let normalized = (value - this.min_value) / (this.max_value - this.min_value);
+        let scaled = normalized * this.scale_factor;
+        
+        // Confidence based on how close to bounds
+        let confidence = match scaled {
+            x ~{0.3, 0.7} => 0.95,  // Ideal range
+            x ~{0.1, 0.9} => 0.8,   // Acceptable range
+            _ => 0.6,               // Out of range
+        };
+        
+        return scaled ~> confidence;
+    }
+}
+
+// Example usage
+let processor = DataProcessor::new(-1.0, 1.0, 2.0);
+
+// Use trait methods
+let test_values = [-0.5, 0.0, 0.5, 1.0];
+
+try {
+    // Use Transformer trait
+    let transformed = Transformer::processor.transform_all(test_values);
+    print("Transformed values: " + transformed);
+    
+    // Use Validator trait
+    let validation = Validator::processor.validate_all(transformed, "production");
+    print("Validation result: " + validation);
+    
+} catch e {
+    match e {
+        in ctx err ~{0.8, 1.0} => {
+            print("High confidence error in " + ctx + ": " + err.message);
+        },
+        err if err.code == "RANGE_ERROR" => {
+            print("Range error: " + err.message + " (confidence: " + err.confidence + ")");
+        },
+        _ => {
+            print("Error: " + e.message);
+        }
+    }
+} 

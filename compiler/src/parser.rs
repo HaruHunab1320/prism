@@ -107,6 +107,7 @@ where
             Some(Token::Uncertain) => self.parse_uncertain_if(),
             Some(Token::In) => self.parse_context_block(),
             Some(Token::Verify) => self.parse_verification_block(),
+            Some(Token::Function) => self.parse_function_definition(),
             Some(_) => self.parse_expression().map(Stmt::Expression),
             None => Err(ParseError::unexpected_eof("statement", self.position))
                 .map_err(|e| e.with_source(self.source.clone())),
@@ -355,5 +356,67 @@ where
             threshold,
             body,
         }))
+    }
+
+    fn parse_function_definition(&mut self) -> Result<Stmt, ParseError> {
+        self.expect_token(Token::Function)?;
+        
+        let name = if let Some(Token::Identifier(name)) = &self.tokens.peek() {
+            name.clone()
+        } else {
+            return Err(ParseError::new("Expected function name"));
+        };
+        self.tokens.next();
+        
+        // Parse parameters
+        self.expect_token(Token::LParen)?;
+        let mut parameters = Vec::new();
+        
+        while self.tokens.peek() != Some(Token::RParen) {
+            if let Some(Token::Identifier(param)) = &self.tokens.peek() {
+                parameters.push(param.clone());
+                self.tokens.next();
+                
+                match self.tokens.peek() {
+                    Some(Token::Comma) => {
+                        self.tokens.next();
+                    }
+                    Some(Token::RParen) => {}
+                    _ => return Err(ParseError::new("Expected ',' or ')' after parameter")),
+                }
+            } else {
+                return Err(ParseError::new("Expected parameter name"));
+            }
+        }
+        self.tokens.next(); // consume ')'
+        
+        // Parse optional confidence level
+        let confidence_level = if self.tokens.peek() == Some(Token::ConfidenceFlow) {
+            self.tokens.next();
+            if let Some(Token::Float(conf)) = self.tokens.peek() {
+                self.tokens.next();
+                Some(conf)
+            } else {
+                return Err(ParseError::new("Expected confidence value after '~'"));
+            }
+        } else {
+            None
+        };
+        
+        // Parse function body
+        self.expect_token(Token::LBrace)?;
+        let mut body = Vec::new();
+        
+        while self.tokens.peek() != Some(Token::RBrace) {
+            body.push(self.parse_statement()?);
+        }
+        self.tokens.next(); // consume '}'
+        
+        Ok(Stmt::FunctionDefinition {
+            name,
+            parameters,
+            body,
+            confidence_level,
+        })
     }
 } 

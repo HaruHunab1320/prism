@@ -1,0 +1,111 @@
+// Example of type inference in Prism
+
+// Basic type inference
+let x = 42;                 // Inferred as integer
+let y = 3.14;              // Inferred as float
+let s = "hello";           // Inferred as string
+let b = true;              // Inferred as boolean
+
+// Type inference with confidence values
+let conf_val ~0.9 = 0.8;   // Inferred as float with 0.9 confidence
+
+// Function with inferred parameter and return types
+fn add(x, y) {
+    return x + y;  // Return type inferred from parameter types
+}
+
+// Function with partial type annotations
+fn process<T>(value: T) -> T ~0.95 {
+    return value ~> 0.9;  // Type T preserved, confidence combined
+}
+
+// Generic function with inferred constraints
+fn combine<T>(a: T, b: T) -> T ~0.8 {
+    if confidence(a) > confidence(b) {
+        return a;
+    } else {
+        return b;
+    }
+}
+
+// Complex type inference example
+fn process_data<T, U>(input: T, transform: fn(T) -> U) -> U ~0.9 {
+    let intermediate = transform(input);  // U inferred from transform return type
+    return intermediate ~> 0.85;  // Confidence combined: 0.9 * 0.85
+}
+
+// Context-aware type inference
+in context DataProcessing {
+    // Type inference in context
+    let data = [1, 2, 3];  // Inferred as array<integer>
+    
+    // Function with context-dependent type inference
+    fn process_array(arr) ~context.confidence {
+        let sum = 0;
+        for item in arr {
+            sum = sum + item;  // Types inferred from array elements
+        }
+        return sum / arr.length;  // Return type inferred as float
+    }
+    
+    // Verify inferred types
+    verify against sources ["data_types"] {
+        let result = process_array(data);
+        assert(typeof(result) == "float");
+    }
+}
+
+// Type inference with pattern matching
+fn match_value<T>(value: T) ~0.9 {
+    match value {
+        x if typeof(x) == "integer" => {
+            return x * 2;  // Inferred as integer
+        },
+        x if typeof(x) == "float" => {
+            return x * 2.0;  // Inferred as float
+        },
+        x if typeof(x) == "string" => {
+            return x + x;  // Inferred as string
+        },
+        _ => {
+            return value;  // Original type T preserved
+        }
+    }
+}
+
+// Example usage
+fn main() {
+    // Basic inference
+    let num = add(10, 20);  // Inferred as integer
+    print("num: " + num);
+    
+    // Generic inference
+    let processed_int = process(42);      // T inferred as integer
+    let processed_str = process("test");  // T inferred as string
+    
+    // Combined inference
+    let combined_num = combine(3.14, 2.71);  // T inferred as float
+    let combined_str = combine("hello", "world");  // T inferred as string
+    
+    // Complex inference
+    let transformed = process_data(
+        10,
+        fn(x) { return x.to_string(); }  // Return type inferred as string
+    );
+    
+    // Pattern matching inference
+    let matched_int = match_value(42);        // Inferred as integer
+    let matched_float = match_value(3.14);    // Inferred as float
+    let matched_string = match_value("test"); // Inferred as string
+    
+    // Print inferred types
+    print("Type of num: " + typeof(num));
+    print("Type of processed_int: " + typeof(processed_int));
+    print("Type of processed_str: " + typeof(processed_str));
+    print("Type of combined_num: " + typeof(combined_num));
+    print("Type of combined_str: " + typeof(combined_str));
+    print("Type of transformed: " + typeof(transformed));
+    print("Type of matched_int: " + typeof(matched_int));
+    print("Type of matched_float: " + typeof(matched_float));
+    print("Type of matched_string: " + typeof(matched_string));
+} 

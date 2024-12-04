@@ -1,0 +1,128 @@
+// Example of macros in Prism
+
+// Simple macro for debug printing with confidence
+macro debug<msg> ~0.9 {
+    if confidence($msg) > 0.8 {
+        print("High confidence: " + #$msg)
+    } else {
+        print("Low confidence: " + #$msg)
+    }
+}
+
+// Macro for generating confidence-aware getters and setters
+macro generate_accessors<struct_name, field_name> {
+    // Getter with confidence propagation
+    fn ${struct_name}_get_${field_name}(self) -> auto ~0.95 {
+        return self.${field_name} ~> confidence(self);
+    }
+    
+    // Setter with confidence validation
+    fn ${struct_name}_set_${field_name}(self, value) ~0.9 {
+        if confidence(value) > 0.7 {
+            self.${field_name} = value ~> 0.95;
+        } else {
+            throw error("Low confidence value", confidence: confidence(value));
+        }
+    }
+}
+
+// Macro for repeating code with confidence accumulation
+macro repeat_with_confidence<items, operation> ~0.9 {
+    let results = [];
+    let total_confidence = 1.0;
+    
+    repeat($items) {
+        let result = $operation($item);
+        total_confidence = total_confidence * confidence(result);
+        results.push(result);
+    }
+    
+    return results ~> total_confidence;
+}
+
+// Macro for context-aware validation
+macro validate_in_context<value, context_name> {
+    in context $context_name {
+        verify against sources ["validation_rules"] {
+            if typeof($value) == "string" {
+                return $value ~> 0.9;
+            } else if typeof($value) == "number" {
+                return $value ~> 0.95;
+            } else {
+                return $value ~> 0.8;
+            }
+        }
+    }
+}
+
+// Example usage
+struct Person {
+    name: string,
+    age: integer,
+    confidence: float,
+}
+
+// Generate accessors for Person struct
+generate_accessors<Person, name>
+generate_accessors<Person, age>
+
+// Example function using macros
+fn process_data(values: array<float>) ~0.9 {
+    // Debug print with confidence
+    debug("Processing " + values.length + " values");
+    
+    // Repeat operation with confidence tracking
+    let processed = repeat_with_confidence(values, fn(x) {
+        return x * 2;
+    });
+    
+    // Validate results in context
+    let validated = validate_in_context(processed, "DataProcessing");
+    
+    return validated;
+}
+
+// Pattern matching macro
+macro match_confidence<value> {
+    match confidence($value) {
+        x ~{0.9, 1.0} => {
+            print("Very high confidence: " + #$value);
+            return $value;
+        },
+        x ~{0.7, 0.89} => {
+            print("High confidence: " + #$value);
+            return $value ~> 0.8;
+        },
+        x ~{0.5, 0.69} => {
+            print("Medium confidence: " + #$value);
+            return $value ~> 0.6;
+        },
+        _ => {
+            print("Low confidence: " + #$value);
+            return $value ~> 0.4;
+        }
+    }
+}
+
+// Example usage
+fn main() {
+    let person = Person {
+        name: "Alice" ~0.9,
+        age: 30 ~0.95,
+        confidence: 0.9,
+    };
+    
+    // Use generated accessors
+    let name = person_get_name(person);
+    person_set_age(person, 31 ~0.8);
+    
+    // Process array with confidence tracking
+    let values = [1.0 ~0.9, 2.0 ~0.8, 3.0 ~0.95];
+    let result = process_data(values);
+    
+    // Match confidence patterns
+    let matched = match_confidence(result);
+    
+    // Debug print with confidence
+    debug(matched);
+} 

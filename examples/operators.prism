@@ -1,0 +1,109 @@
+// Example of operator overloading in Prism
+
+// Define a custom Vector type
+struct Vector {
+    x: float,
+    y: float,
+    confidence: float,
+}
+
+// Implement vector addition with confidence
+operator + for Vector Vector -> Vector ~0.95 {
+    // Combine vector components
+    let x = lhs.x + rhs.x;
+    let y = lhs.y + rhs.y;
+    
+    // Combine confidence values
+    let combined_conf = lhs.confidence && rhs.confidence;
+    
+    return Vector {
+        x: x,
+        y: y,
+        confidence: combined_conf,
+    };
+}
+
+// Implement vector multiplication by scalar
+operator * for Vector float -> Vector ~0.9 {
+    return Vector {
+        x: lhs.x * rhs,
+        y: lhs.y * rhs,
+        confidence: lhs.confidence,
+    };
+}
+
+// Implement vector dot product with confidence
+operator . for Vector Vector -> float ~0.85 {
+    let dot = lhs.x * rhs.x + lhs.y * rhs.y;
+    let conf = lhs.confidence && rhs.confidence;
+    return dot ~> conf;
+}
+
+// Implement vector magnitude (unary operator)
+operator | for Vector -> float ~0.95 {
+    let mag = (value.x * value.x + value.y * value.y).sqrt();
+    return mag ~> value.confidence;
+}
+
+// Implement vector equality with confidence threshold
+operator == for Vector Vector -> bool ~0.8 {
+    // Check if components are equal within a small epsilon
+    let epsilon = 0.0001;
+    let components_equal = 
+        (lhs.x - rhs.x).abs() < epsilon &&
+        (lhs.y - rhs.y).abs() < epsilon;
+    
+    // Check if confidence values are similar
+    let conf_similar = (lhs.confidence - rhs.confidence).abs() < epsilon;
+    
+    return components_equal && conf_similar;
+}
+
+// Example usage
+fn main() {
+    // Create vectors with confidence
+    let v1 = Vector { x: 1.0, y: 2.0, confidence: 0.9 };
+    let v2 = Vector { x: 2.0, y: 3.0, confidence: 0.8 };
+    
+    // Vector addition
+    let sum = v1 + v2;  // Combined confidence: 0.9 && 0.8 * 0.95 ≈ 0.684
+    print("Sum: " + sum);
+    
+    // Scalar multiplication
+    let scaled = v1 * 2.0;  // Confidence: 0.9 * 0.9 = 0.81
+    print("Scaled: " + scaled);
+    
+    // Dot product
+    let dot = v1 . v2;  // Confidence: 0.9 && 0.8 * 0.85 ≈ 0.612
+    print("Dot product: " + dot);
+    
+    // Magnitude
+    let mag = |v1|;  // Confidence: 0.9 * 0.95 ≈ 0.855
+    print("Magnitude: " + mag);
+    
+    // Equality comparison
+    let equal = v1 == v2;  // Confidence: 0.8
+    print("Equal: " + equal);
+    
+    // Chained operations with confidence propagation
+    let result = (v1 + v2) * 2.0;
+    print("Chained result: " + result);
+    
+    // Using in context
+    in context Geometry {
+        // Context-specific vector operations
+        let normalized = v1 * (1.0 / |v1|);
+        print("Normalized: " + normalized);
+        
+        // Verify vector operations
+        verify against sources ["geometry_rules"] {
+            let perpendicular = Vector {
+                x: -v1.y,
+                y: v1.x,
+                confidence: v1.confidence,
+            };
+            let dot_product = v1 . perpendicular;
+            assert(dot_product == 0.0);
+        }
+    }
+} 

@@ -1,0 +1,88 @@
+// Example of async/await with confidence levels in Prism
+
+// Async function that simulates fetching data with varying confidence
+async fn fetch_data(url: string) -> string ~0.9 {
+    // Simulate network request with 90% confidence
+    promise ~0.9 "Response from " + url
+}
+
+// Async function that processes data with confidence
+async fn process_data(data: string) -> string ~0.95 {
+    // Process data with 95% confidence
+    promise ~0.95 "Processed: " + data
+}
+
+// Main async block with error handling
+async ~0.8 {
+    try {
+        // Fetch data with 90% base confidence
+        let raw_data = await fetch_data("https://api.example.com/data");
+        
+        // Process data with 95% confidence
+        let processed = await ~0.9 process_data(raw_data);
+        
+        // Final confidence will be product of:
+        // - Block confidence (0.8)
+        // - Fetch confidence (0.9)
+        // - Process confidence (0.95)
+        // - Await confidence (0.9)
+        print(processed);  // Confidence ≈ 0.8 * 0.9 * 0.95 * 0.9 = 0.62
+        
+    } catch error {
+        // Error handling with confidence
+        print("Error occurred: " + error.message ~error.confidence);
+    }
+}
+
+// Parallel async operations
+async ~0.85 {
+    let promises = [
+        fetch_data("https://api1.example.com"),
+        fetch_data("https://api2.example.com"),
+        fetch_data("https://api3.example.com")
+    ];
+    
+    // Wait for all promises with combined confidence
+    let results = await ~0.9 Promise.all(promises);
+    
+    // Process results maintaining confidence chain
+    for result in results {
+        let processed = await process_data(result);
+        print(processed);
+    }
+}
+
+// Custom async operation with context
+async fn fetch_with_context(url: string, ctx: Context) -> string ~ctx.confidence {
+    // Fetch data considering context confidence
+    let data = await ~ctx.confidence fetch_data(url);
+    
+    // Apply context-specific processing
+    match ctx.value {
+        "high_priority" => {
+            // Boost confidence for high priority requests
+            await ~0.98 process_data(data)
+        },
+        "low_priority" => {
+            // Reduce confidence for low priority requests
+            await ~0.75 process_data(data)
+        },
+        _ => {
+            // Default processing
+            await process_data(data)
+        }
+    }
+}
+
+// Example usage with context
+async ~0.9 {
+    let high_ctx = Context("priority", "high_priority", 0.95);
+    let low_ctx = Context("priority", "low_priority", 0.8);
+    
+    // Fetch with different contexts
+    let high_result = await fetch_with_context("https://api.example.com/high", high_ctx);
+    let low_result = await fetch_with_context("https://api.example.com/low", low_ctx);
+    
+    print("High priority result: " + high_result);
+    print("Low priority result: " + low_result);
+} 

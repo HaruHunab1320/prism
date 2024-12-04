@@ -1,0 +1,163 @@
+// Example of structs with confidence values in Prism
+
+// Define a struct for sensor data with confidence levels
+struct SensorData ~0.9 {
+    // Fields with confidence levels and default values
+    temperature: f64 ~0.95 = 0.0,
+    humidity: f64 ~0.9 = 0.0,
+    pressure: f64 ~0.85 = 0.0,
+    timestamp: i64 ~1.0 = 0,
+    
+    // Methods with confidence levels
+    fn is_valid() ~0.95 {
+        let temp_valid = this.temperature >= -50.0 && this.temperature <= 50.0;
+        let humid_valid = this.humidity >= 0.0 && this.humidity <= 100.0;
+        let press_valid = this.pressure >= 900.0 && this.pressure <= 1100.0;
+        
+        return (temp_valid && humid_valid && press_valid) ~> 0.9;
+    }
+    
+    fn get_quality_score() ~0.9 {
+        let temp_score = match this.temperature {
+            t ~{20.0, 25.0} => 1.0,  // Ideal range
+            t ~{15.0, 30.0} => 0.8,  // Acceptable range
+            _ => 0.5,                 // Out of range
+        };
+        
+        let humid_score = match this.humidity {
+            h ~{40.0, 60.0} => 1.0,  // Ideal range
+            h ~{30.0, 70.0} => 0.8,  // Acceptable range
+            _ => 0.5,                 // Out of range
+        };
+        
+        let press_score = match this.pressure {
+            p ~{1000.0, 1020.0} => 1.0,  // Ideal range
+            p ~{980.0, 1040.0} => 0.8,   // Acceptable range
+            _ => 0.5,                     // Out of range
+        };
+        
+        return (temp_score + humid_score + press_score) / 3.0;
+    }
+    
+    fn validate_in_context(context) ~0.95 {
+        in context {
+            let is_valid = this.is_valid();
+            if !is_valid {
+                throw error("Invalid sensor data",
+                          code: "VALIDATION_ERROR",
+                          confidence: 0.95,
+                          context: context);
+            }
+            
+            let quality = this.get_quality_score();
+            return quality ~> 0.9;
+        }
+    }
+}
+
+// Define a struct for aggregating multiple sensor readings
+struct SensorArray ~0.95 {
+    sensors: [SensorData] ~0.9 = [],
+    location: string ~1.0 = "",
+    
+    fn add_reading(reading: SensorData) ~0.9 {
+        if reading.is_valid() {
+            this.sensors.push(reading);
+            return true ~> 0.9;
+        } else {
+            return false ~> 0.7;
+        }
+    }
+    
+    fn get_average_readings() ~0.9 {
+        if this.sensors.length == 0 {
+            throw error("No sensor readings available",
+                      code: "NO_DATA",
+                      confidence: 0.95);
+        }
+        
+        let avg_temp = 0.0;
+        let avg_humid = 0.0;
+        let avg_press = 0.0;
+        
+        for sensor in this.sensors {
+            avg_temp = avg_temp + sensor.temperature;
+            avg_humid = avg_humid + sensor.humidity;
+            avg_press = avg_press + sensor.pressure;
+        }
+        
+        return SensorData {
+            temperature: avg_temp / this.sensors.length,
+            humidity: avg_humid / this.sensors.length,
+            pressure: avg_press / this.sensors.length,
+            timestamp: now(),
+        };
+    }
+    
+    fn validate_all(context) ~0.95 {
+        let valid_count = 0;
+        let total_quality = 0.0;
+        
+        try {
+            for sensor in this.sensors {
+                let quality = sensor.validate_in_context(context);
+                total_quality = total_quality + quality;
+                valid_count = valid_count + 1;
+            }
+            
+            return (total_quality / valid_count) ~> 0.9;
+        } catch e {
+            match e {
+                in ctx err ~{0.9, 1.0} => {
+                    throw error("Critical validation error in " + ctx,
+                              code: "CRITICAL_ERROR",
+                              confidence: err.confidence,
+                              context: ctx);
+                },
+                _ => {
+                    return (total_quality / this.sensors.length) ~> 0.7;
+                }
+            }
+        }
+    }
+}
+
+// Example usage
+let reading1 = SensorData {
+    temperature: 23.5,
+    humidity: 45.0,
+    pressure: 1013.2,
+    timestamp: now(),
+};
+
+let reading2 = SensorData {
+    temperature: 24.0,
+    humidity: 48.0,
+    pressure: 1012.8,
+    timestamp: now(),
+};
+
+let array = SensorArray {
+    location: "Lab 1",
+};
+
+try {
+    array.add_reading(reading1);
+    array.add_reading(reading2);
+    
+    let avg_reading = array.get_average_readings();
+    print("Average readings: " + avg_reading);
+    
+    let validation_result = array.validate_all("production");
+    print("Validation result: " + validation_result);
+    
+} catch e {
+    match e {
+        in "production" err => {
+            print("Production error: " + err.message + " (confidence: " + err.confidence + ")");
+        },
+        _ => {
+            print("Error: " + e.message);
+        }
+    }
+} 

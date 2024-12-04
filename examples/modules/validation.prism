@@ -1,0 +1,93 @@
+// Validation module that uses utility functions
+module validation ~0.9 {
+    // Import utility functions with confidence adjustment
+    import { weighted_confidence, normalize_confidence, combine_confidence }
+        from "utils" ~0.95;
+    
+    // Validation rules with confidence levels
+    const RULES = {
+        "length": 0.8,
+        "range": 0.9,
+        "type": 0.95,
+    };
+    
+    // Validate array of values
+    export fn validate_array(values) ~0.9 {
+        try {
+            // Length validation
+            if values.length == 0 {
+                throw error("Empty array", code: "EMPTY_ARRAY", confidence: RULES.length);
+            }
+            
+            let confidences = [];
+            
+            // Range and type validation
+            for value in values {
+                let value_conf = validate_value(value);
+                confidences.push(value_conf);
+            }
+            
+            // Combine confidence values
+            return combine_confidence(confidences, "weighted");
+            
+        } catch e {
+            match e {
+                err if err.code == "EMPTY_ARRAY" => {
+                    return 0.0 ~> RULES.length;
+                },
+                err if err.confidence > 0.8 => {
+                    throw err;  // Re-throw high confidence errors
+                },
+                _ => {
+                    return 0.5 ~> 0.7;  // Default fallback with reduced confidence
+                }
+            }
+        }
+    }
+    
+    // Validate single value
+    export fn validate_value(value) ~0.95 {
+        // Type validation
+        if typeof(value) != "number" {
+            throw error("Invalid type", code: "TYPE_ERROR", confidence: RULES.type);
+        }
+        
+        // Range validation
+        let normalized = normalize_confidence(value);
+        
+        // Weight the confidence based on how far it is from ideal range
+        let range_conf = match normalized {
+            x ~{0.7, 1.0} => 0.95,  // High confidence range
+            x ~{0.4, 0.7} => 0.8,   // Medium confidence range
+            x ~{0.0, 0.4} => 0.6,   // Low confidence range
+            _ => 0.3                 // Out of range
+        };
+        
+        return normalized ~> range_conf;
+    }
+    
+    // Validate with context
+    export fn validate_in_context(values, context, threshold) ~0.9 {
+        in context {
+            let base_confidence = validate_array(values);
+            
+            try {
+                // Apply context-specific threshold
+                return apply_threshold(base_confidence, threshold, context);
+            } catch e {
+                match e {
+                    in ctx err ~{0.8, 1.0} => {
+                        // High confidence error in specific context
+                        throw error("Validation failed in " + ctx + ": " + err.message,
+                                  code: "CONTEXT_ERROR",
+                                  confidence: err.confidence,
+                                  context: ctx);
+                    },
+                    _ => {
+                        return base_confidence ~> 0.7;  // Reduced confidence for other errors
+                    }
+                }
+            }
+        }
+    }
+} 

@@ -1,0 +1,52 @@
+// Array of confidence values
+let confidence_scores = [0.8, 0.6, 0.9, 0.7];
+
+// Function to calculate weighted average confidence
+fn weighted_average(values, weights) ~0.95 {
+    if values.length != weights.length {
+        return 0.0;
+    }
+    
+    let sum = 0.0;
+    let weight_sum = 0.0;
+    
+    for i in 0:values.length {
+        sum = sum + (values[i] * weights[i]);
+        weight_sum = weight_sum + weights[i];
+    }
+    
+    return sum / weight_sum;
+}
+
+// Array of importance weights
+let weights = [0.4, 0.2, 0.3, 0.1];
+
+// Calculate weighted confidence
+let weighted_conf = weighted_average(confidence_scores, weights);
+
+// Array manipulation with confidence flows
+let high_confidence = confidence_scores[2] ~> 0.9;  // Access with confidence
+let subset = confidence_scores[1:3];  // Slice
+let length = confidence_scores.length;
+
+// Array concatenation with confidence flow
+let more_scores = [0.75, 0.85];
+let all_scores = confidence_scores + more_scores ~> 0.8;
+
+// Array operations in context
+in "data_validation" {
+    let validated_scores = [];
+    for score in confidence_scores {
+        if score > 0.5 {
+            validated_scores.push(score ~> 0.95);
+        }
+    }
+    print("Validated scores: " + validated_scores);
+}
+
+// Print results
+print("Weighted confidence: " + weighted_conf);
+print("High confidence value: " + high_confidence);
+print("Subset of scores: " + subset);
+print("Number of scores: " + length);
+print("All scores: " + all_scores); 

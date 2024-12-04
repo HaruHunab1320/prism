@@ -1,0 +1,88 @@
+// Example of error handling with confidence values in Prism
+
+// Function that may throw errors with confidence levels
+fn validate_data(data) ~0.9 {
+    if data.length == 0 {
+        throw error("Empty data set", code: "EMPTY_DATA", confidence: 0.95);
+    }
+    
+    let valid_count = 0;
+    let total_confidence = 0.0;
+    
+    try {
+        for value in data {
+            if value < 0 {
+                throw error("Negative value found", code: "NEG_VALUE", confidence: 0.8);
+            }
+            
+            if value > 1.0 {
+                throw error("Value out of range", code: "RANGE_ERROR", confidence: 0.85);
+            }
+            
+            valid_count = valid_count + 1;
+            total_confidence = total_confidence + value;
+        }
+        
+        return total_confidence / valid_count;
+    } catch e ~0.7 if e.code == "NEG_VALUE" {
+        // Handle negative values with reduced confidence
+        print("Warning: Negative values found, using absolute values");
+        return validate_data(data.map(|x| abs(x)));
+    } catch e ~0.6 if e.code == "RANGE_ERROR" {
+        // Handle range errors by normalizing
+        print("Warning: Values out of range, normalizing");
+        return validate_data(data.map(|x| x / max(data)));
+    } catch e {
+        // Re-throw other errors with adjusted confidence
+        throw e ~0.5;
+    } finally {
+        print("Validation complete. Processed " + valid_count + " values");
+    }
+}
+
+// Function to handle errors in different contexts
+fn process_with_context(data, context) ~0.95 {
+    try {
+        in context {
+            let result = validate_data(data);
+            return result ~> 0.9;  // Adjust confidence based on context
+        }
+    } catch e {
+        match e {
+            in "production" err ~{0.8, 1.0} => {
+                // Critical error in production
+                throw error("Production error: " + err.message, 
+                          code: "PROD_ERROR",
+                          confidence: 0.95,
+                          context: "production");
+            },
+            in "testing" err => {
+                // Log error in testing
+                print("Test error: " + err.message);
+                return 0.0 ~> 0.5;
+            },
+            err if err.confidence > 0.8 => {
+                // High confidence errors
+                print("High confidence error: " + err.message);
+                throw err;
+            },
+            _ => {
+                // Default error handling
+                print("Unhandled error: " + e.message);
+                return 0.0 ~> 0.3;
+            }
+        }
+    }
+}
+
+// Example usage
+let test_data = [0.7, -0.4, 1.2, 0.6, 0.9];
+
+try {
+    let result = process_with_context(test_data, "testing");
+    print("Processing result: " + result);
+} catch e {
+    print("Error occurred: " + e.message + " (confidence: " + e.confidence + ")");
+} finally {
+    print("Processing complete");
+} 

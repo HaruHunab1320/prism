@@ -1,0 +1,65 @@
+// Main program demonstrating module usage
+import { combine_confidence } from "utils" ~0.9;
+import { validate_array, validate_in_context } from "validation" ~0.95;
+
+// Test data
+let test_values = [
+    0.85,  // High confidence
+    0.65,  // Medium confidence
+    0.95,  // Very high confidence
+    0.35,  // Low confidence
+];
+
+// Test validation in different contexts
+fn run_validation_tests() ~0.9 {
+    try {
+        // Basic array validation
+        let base_confidence = validate_array(test_values);
+        print("Base validation confidence: " + base_confidence);
+        
+        // Context-specific validation
+        let contexts = ["production", "testing", "development"];
+        let thresholds = [0.8, 0.6, 0.4];
+        let context_confidences = [];
+        
+        for i in 0:contexts.length {
+            let context = contexts[i];
+            let threshold = thresholds[i];
+            
+            try {
+                let ctx_conf = validate_in_context(test_values, context, threshold);
+                context_confidences.push(ctx_conf);
+                print(context + " validation confidence: " + ctx_conf);
+            } catch e {
+                match e {
+                    in "production" err => {
+                        print("Production validation failed: " + err.message);
+                        context_confidences.push(0.0);
+                    },
+                    err if err.confidence > 0.9 => {
+                        print("High confidence error: " + err.message);
+                        throw err;
+                    },
+                    _ => {
+                        print("Validation error in " + context + ": " + e.message);
+                        context_confidences.push(0.3);
+                    }
+                }
+            }
+        }
+        
+        // Combine context confidences
+        let final_confidence = combine_confidence(context_confidences, "weighted");
+        print("Final combined confidence: " + final_confidence);
+        
+        return final_confidence;
+        
+    } catch e {
+        print("Test execution failed: " + e.message);
+        return 0.0 ~> 0.5;
+    }
+}
+
+// Run the tests
+let result = run_validation_tests();
+print("Overall test result confidence: " + result); 
