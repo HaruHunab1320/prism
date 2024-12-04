@@ -1,422 +1,530 @@
 use crate::ast::{Expr, Stmt};
 use crate::lexer::Token;
-use std::iter::Peekable;
-use std::fmt;
-use std::error::Error;
-use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
-#[derive(Error, Debug, Diagnostic)]
-#[error("Parse error: {kind}")]
+#[derive(Debug, Error)]
+#[error("{message}")]
 pub struct ParseError {
-    #[source_code]
-    pub source_code: String,
-    #[label("here")]
-    pub span: SourceSpan,
-    pub kind: ParseErrorKind,
+    pub message: String,
+    pub position: usize,
 }
 
-#[derive(Error, Debug)]
-pub enum ParseErrorKind {
-    #[error("unexpected token: expected {expected}, found {found}")]
-    UnexpectedToken {
-        expected: String,
-        found: String,
-    },
-    #[error("unexpected end of file: expected {expected}")]
-    UnexpectedEof {
-        expected: String,
-    },
-    #[error("invalid expression: {0}")]
-    InvalidExpression(String),
+pub struct Parser {
+    tokens: Vec<Token>,
+    current: usize,
 }
 
-impl ParseError {
-    pub fn unexpected_token(expected: &str, found: String, position: usize) -> Self {
+impl Parser {
+    pub fn new(tokens: Vec<Token>) -> Self {
         Self {
-            source_code: String::new(),
-            span: (position, 1).into(),
-            kind: ParseErrorKind::UnexpectedToken {
-                expected: expected.to_string(),
-                found,
-            },
+            tokens,
+            current: 0,
         }
     }
 
-    pub fn unexpected_eof(expected: &str, position: usize) -> Self {
-        Self {
-            source_code: String::new(),
-            span: (position, 1).into(),
-            kind: ParseErrorKind::UnexpectedEof {
-                expected: expected.to_string(),
-            },
-        }
-    }
-
-    pub fn invalid_expression(message: String, position: usize) -> Self {
-        Self {
-            source_code: String::new(),
-            span: (position, 1).into(),
-            kind: ParseErrorKind::InvalidExpression(message),
-        }
-    }
-
-    pub fn location(&self) -> usize {
-        self.span.offset()
-    }
-
-    pub fn with_source(mut self, source: String) -> Self {
-        self.source_code = source;
-        self
-    }
-}
-
-pub struct Parser<I>
-where
-    I: Iterator<Item = Token>,
-{
-    tokens: Peekable<I>,
-    position: usize,
-    source: String,
-}
-
-impl<I> Parser<I>
-where
-    I: Iterator<Item = Token>,
-{
-    pub fn new(tokens: I) -> Self {
-        Self {
-            tokens: tokens.peekable(),
-            position: 0,
-            source: String::new(),
-        }
-    }
-
-    pub fn with_source(mut self, source: String) -> Self {
-        self.source = source;
-        self
-    }
-
-    pub fn position(&self) -> usize {
-        self.position
-    }
-
-    pub fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
-        match self.tokens.peek() {
-            Some(Token::Confidence) => self.parse_confidence_declaration(),
-            Some(Token::Uncertain) => self.parse_uncertain_if(),
-            Some(Token::In) => self.parse_context_block(),
-            Some(Token::Verify) => self.parse_verification_block(),
-            Some(Token::Function) => self.parse_function_definition(),
-            Some(_) => self.parse_expression().map(Stmt::Expression),
-            None => Err(ParseError::unexpected_eof("statement", self.position))
-                .map_err(|e| e.with_source(self.source.clone())),
-        }
-    }
-
-    fn expect_token(&mut self, expected: Token) -> Result<(), ParseError> {
-        match self.tokens.next() {
-            Some(token) if token == expected => {
-                self.position += 1;
-                Ok(())
-            }
-            Some(token) => Err(ParseError::unexpected_token(
-                &format!("{:?}", expected),
-                format!("{:?}", token),
-                self.position,
-            ).with_source(self.source.clone())),
-            None => Err(ParseError::unexpected_eof(
-                &format!("{:?}", expected),
-                self.position,
-            ).with_source(self.source.clone())),
-        }
-    }
-
-    pub fn parse_program(&mut self) -> Result<Vec<Stmt>, ParseError> {
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut statements = Vec::new();
-        while self.tokens.peek().is_some() {
-            statements.push(self.parse_statement()?);
+        while !self.is_at_end() {
+            statements.push(self.declaration()?);
         }
         Ok(statements)
     }
 
-    fn parse_expression(&mut self) -> Result<Expr, ParseError> {
-        match self.tokens.next() {
-            Some(Token::Float(s)) => {
-                self.position += 1;
-                s.parse::<f64>()
-                    .map(Expr::Float)
-                    .map_err(|_| ParseError::invalid_expression(format!("Invalid float: {}", s), self.position))
-            }
-            Some(Token::Integer(s)) => {
-                self.position += 1;
-                s.parse::<i64>()
-                    .map(Expr::Integer)
-                    .map_err(|_| ParseError::invalid_expression(format!("Invalid integer: {}", s), self.position))
-            }
-            Some(Token::String(s)) => {
-                self.position += 1;
-                Ok(Expr::String(s))
-            }
-            Some(Token::Identifier(s)) => {
-                self.position += 1;
-                Ok(Expr::Identifier(s))
-            }
-            Some(token) => Err(ParseError::unexpected_token(
-                "expression",
-                format!("{:?}", token),
-                self.position,
-            )),
-            None => Err(ParseError::unexpected_eof(
-                "expression",
-                self.position,
-            )),
-        }
-    }
-
-    fn parse_confidence_declaration(&mut self) -> Result<Stmt, ParseError> {
-        self.expect_token(Token::Confidence)?;
-        let name = match self.tokens.next() {
-            Some(Token::Identifier(name)) => {
-                self.position += 1;
-                name
-            }
-            Some(token) => return Err(ParseError::unexpected_token(
-                "identifier",
-                format!("{:?}", token),
-                self.position,
-            )),
-            None => return Err(ParseError::unexpected_eof(
-                "identifier",
-                self.position,
-            )),
-        };
-
-        self.expect_token(Token::Assign)?;
-        let value = self.parse_expression()?;
-
-        Ok(Stmt::Declaration { name, value })
-    }
-
-    fn parse_uncertain_if(&mut self) -> Result<Stmt, ParseError> {
-        self.expect_token(Token::Uncertain)?;
-        self.expect_token(Token::If)?;
-        self.expect_token(Token::LParen)?;
-
-        let condition = self.parse_expression()?;
-
-        self.expect_token(Token::RParen)?;
-
-        let mut high_confidence = Vec::new();
-        self.expect_token(Token::LBrace)?;
-        while let Some(token) = self.tokens.peek() {
-            if *token == Token::RBrace {
-                self.tokens.next();
-                break;
-            }
-            high_confidence.push(self.parse_statement()?);
-        }
-
-        let medium_confidence = if let Some(Token::Medium) = self.tokens.peek() {
-            self.tokens.next();
-            let mut stmts = Vec::new();
-            self.expect_token(Token::LBrace)?;
-            while let Some(token) = self.tokens.peek() {
-                if *token == Token::RBrace {
-                    self.tokens.next();
-                    break;
-                }
-                stmts.push(self.parse_statement()?);
-            }
-            Some(stmts)
+    fn declaration(&mut self) -> Result<Stmt, ParseError> {
+        if self.match_token(&[Token::Let]) {
+            self.let_declaration()
+        } else if self.match_token(&[Token::Function]) {
+            self.function_declaration()
+        } else if self.match_token(&[Token::Context]) {
+            self.context_declaration()
+        } else if self.match_token(&[Token::Verify]) {
+            self.verify_declaration()
         } else {
-            None
-        };
-
-        let low_confidence = if let Some(Token::Low) = self.tokens.peek() {
-            self.tokens.next();
-            let mut stmts = Vec::new();
-            self.expect_token(Token::LBrace)?;
-            while let Some(token) = self.tokens.peek() {
-                if *token == Token::RBrace {
-                    self.tokens.next();
-                    break;
-                }
-                stmts.push(self.parse_statement()?);
-            }
-            Some(stmts)
-        } else {
-            None
-        };
-
-        Ok(Stmt::Expression(Expr::UncertainIf {
-            condition: Box::new(condition),
-            high_confidence,
-            medium_confidence,
-            low_confidence,
-        }))
+            self.statement()
+        }
     }
 
-    fn parse_context_block(&mut self) -> Result<Stmt, ParseError> {
-        self.expect_token(Token::In)?;
-        self.expect_token(Token::Context)?;
-
-        let context_name = match self.tokens.next() {
-            Some(Token::Identifier(name)) => {
-                self.position += 1;
-                name
-            }
-            Some(token) => return Err(ParseError::unexpected_token(
-                "identifier",
-                format!("{:?}", token),
-                self.position,
-            )),
-            None => return Err(ParseError::unexpected_eof(
-                "identifier",
-                self.position,
-            )),
-        };
-
-        let mut body = Vec::new();
-        self.expect_token(Token::LBrace)?;
-        while let Some(token) = self.tokens.peek() {
-            if *token == Token::RBrace {
-                self.tokens.next();
-                break;
-            }
-            body.push(self.parse_statement()?);
-        }
-
-        Ok(Stmt::Expression(Expr::ContextBlock {
-            context_name,
-            body,
-        }))
-    }
-
-    fn parse_verification_block(&mut self) -> Result<Stmt, ParseError> {
-        self.expect_token(Token::Verify)?;
-        self.expect_token(Token::Identifier("against".into()))?;
-        self.expect_token(Token::Identifier("sources".into()))?;
-
-        let mut sources = Vec::new();
-        self.expect_token(Token::LBracket)?;
-        while let Some(token) = self.tokens.peek() {
-            if *token == Token::RBracket {
-                self.tokens.next();
-                break;
-            }
-            match self.tokens.next() {
-                Some(Token::String(s)) => {
-                    self.position += 1;
-                    sources.push(s);
-                }
-                Some(token) => return Err(ParseError::unexpected_token(
-                    "string",
-                    format!("{:?}", token),
-                    self.position,
-                )),
-                None => return Err(ParseError::unexpected_eof(
-                    "string or ]",
-                    self.position,
-                )),
-            }
-        }
-
-        let threshold = match self.tokens.next() {
-            Some(Token::Float(s)) => {
-                self.position += 1;
-                s.parse::<f64>().map_err(|_| ParseError::invalid_expression(
-                    format!("Invalid float: {}", s),
-                    self.position,
-                ))?
-            }
-            Some(token) => return Err(ParseError::unexpected_token(
-                "float",
-                format!("{:?}", token),
-                self.position,
-            )),
-            None => return Err(ParseError::unexpected_eof(
-                "float",
-                self.position,
-            )),
-        };
-
-        let mut body = Vec::new();
-        self.expect_token(Token::LBrace)?;
-        while let Some(token) = self.tokens.peek() {
-            if *token == Token::RBrace {
-                self.tokens.next();
-                break;
-            }
-            body.push(self.parse_statement()?);
-        }
-
-        Ok(Stmt::Expression(Expr::Verify {
-            sources,
-            threshold,
-            body,
-        }))
-    }
-
-    fn parse_function_definition(&mut self) -> Result<Stmt, ParseError> {
-        self.expect_token(Token::Function)?;
-        
-        let name = if let Some(Token::Identifier(name)) = &self.tokens.peek() {
-            name.clone()
-        } else {
-            return Err(ParseError::new("Expected function name"));
-        };
-        self.tokens.next();
-        
-        // Parse parameters
-        self.expect_token(Token::LParen)?;
-        let mut parameters = Vec::new();
-        
-        while self.tokens.peek() != Some(Token::RParen) {
-            if let Some(Token::Identifier(param)) = &self.tokens.peek() {
-                parameters.push(param.clone());
-                self.tokens.next();
-                
-                match self.tokens.peek() {
-                    Some(Token::Comma) => {
-                        self.tokens.next();
-                    }
-                    Some(Token::RParen) => {}
-                    _ => return Err(ParseError::new("Expected ',' or ')' after parameter")),
-                }
-            } else {
-                return Err(ParseError::new("Expected parameter name"));
-            }
-        }
-        self.tokens.next(); // consume ')'
-        
-        // Parse optional confidence level
-        let confidence_level = if self.tokens.peek() == Some(Token::ConfidenceFlow) {
-            self.tokens.next();
-            if let Some(Token::Float(conf)) = self.tokens.peek() {
-                self.tokens.next();
-                Some(conf)
-            } else {
-                return Err(ParseError::new("Expected confidence value after '~'"));
-            }
-        } else {
-            None
-        };
-        
-        // Parse function body
-        self.expect_token(Token::LBrace)?;
-        let mut body = Vec::new();
-        
-        while self.tokens.peek() != Some(Token::RBrace) {
-            body.push(self.parse_statement()?);
-        }
-        self.tokens.next(); // consume '}'
-        
-        Ok(Stmt::FunctionDefinition {
+    fn let_declaration(&mut self) -> Result<Stmt, ParseError> {
+        let name = self.consume_identifier("Expected variable name")?;
+        self.consume(&Token::Equal, "Expected '=' after variable name")?;
+        let initializer = self.expression()?;
+        self.consume(&Token::Semicolon, "Expected ';' after variable declaration")?;
+        Ok(Stmt::Let {
             name,
-            parameters,
-            body,
-            confidence_level,
+            initializer,
         })
+    }
+
+    fn context_declaration(&mut self) -> Result<Stmt, ParseError> {
+        let name = self.consume_string("Expected context name")?;
+        self.consume(&Token::LBrace, "Expected '{' after context name")?;
+        let mut statements = Vec::new();
+        while !self.check(&Token::RBrace) && !self.is_at_end() {
+            statements.push(self.declaration()?);
+        }
+        self.consume(&Token::RBrace, "Expected '}' after context block")?;
+        Ok(Stmt::Block(statements))
+    }
+
+    fn verify_declaration(&mut self) -> Result<Stmt, ParseError> {
+        let condition = self.expression()?;
+        self.consume(&Token::LBrace, "Expected '{' after verify condition")?;
+        let mut statements = Vec::new();
+        while !self.check(&Token::RBrace) && !self.is_at_end() {
+            statements.push(self.declaration()?);
+        }
+        self.consume(&Token::RBrace, "Expected '}' after verify block")?;
+        Ok(Stmt::Block(statements))
+    }
+
+    fn function_declaration(&mut self) -> Result<Stmt, ParseError> {
+        let name = self.consume_identifier("Expected function name")?;
+        self.consume(&Token::LParen, "Expected '(' after function name")?;
+        let mut params = Vec::new();
+        if !self.check(&Token::RParen) {
+            loop {
+                params.push(self.consume_identifier("Expected parameter name")?);
+                if !self.match_token(&[Token::Comma]) {
+                    break;
+                }
+            }
+        }
+        self.consume(&Token::RParen, "Expected ')' after parameters")?;
+        self.consume(&Token::LBrace, "Expected '{' before function body")?;
+        let body = self.block()?;
+        Ok(Stmt::Function {
+            name,
+            params,
+            body,
+        })
+    }
+
+    fn statement(&mut self) -> Result<Stmt, ParseError> {
+        if self.match_token(&[Token::If]) {
+            self.if_statement()
+        } else if self.match_token(&[Token::While]) {
+            self.while_statement()
+        } else if self.match_token(&[Token::Break]) {
+            self.consume(&Token::Semicolon, "Expected ';' after 'break'")?;
+            Ok(Stmt::Break)
+        } else if self.match_token(&[Token::Continue]) {
+            self.consume(&Token::Semicolon, "Expected ';' after 'continue'")?;
+            Ok(Stmt::Continue)
+        } else if self.match_token(&[Token::Return]) {
+            let value = if !self.check(&Token::Semicolon) {
+                self.expression()?
+            } else {
+                Expr::Float(0.0) // Default return value
+            };
+            self.consume(&Token::Semicolon, "Expected ';' after return value")?;
+            Ok(Stmt::Return(value))
+        } else if self.match_token(&[Token::Try]) {
+            self.try_statement()
+        } else if self.match_token(&[Token::Throw]) {
+            let value = self.expression()?;
+            self.consume(&Token::Semicolon, "Expected ';' after throw value")?;
+            Ok(Stmt::Throw(value))
+        } else if self.match_token(&[Token::LBrace]) {
+            Ok(Stmt::Block(self.block()?))
+        } else {
+            let expr = self.expression()?;
+            self.consume(&Token::Semicolon, "Expected ';' after expression")?;
+            Ok(Stmt::Expression(expr))
+        }
+    }
+
+    fn if_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(&Token::LParen, "Expected '(' after 'if'")?;
+        let condition = self.expression()?;
+        self.consume(&Token::RParen, "Expected ')' after if condition")?;
+        let then_branch = Box::new(self.statement()?);
+        let else_branch = if self.match_token(&[Token::Else]) {
+            Some(Box::new(self.statement()?))
+        } else {
+            None
+        };
+        Ok(Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        })
+    }
+
+    fn while_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(&Token::LParen, "Expected '(' after 'while'")?;
+        let condition = self.expression()?;
+        self.consume(&Token::RParen, "Expected ')' after while condition")?;
+        let body = Box::new(self.statement()?);
+        Ok(Stmt::While {
+            condition,
+            body,
+        })
+    }
+
+    fn try_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(&Token::LBrace, "Expected '{' after 'try'")?;
+        let try_block = self.block()?;
+        self.consume(&Token::Catch, "Expected 'catch' after try block")?;
+        self.consume(&Token::LParen, "Expected '(' after 'catch'")?;
+        let catch_variable = self.consume_identifier("Expected catch variable name")?;
+        self.consume(&Token::RParen, "Expected ')' after catch variable")?;
+        self.consume(&Token::LBrace, "Expected '{' after catch declaration")?;
+        let catch_block = self.block()?;
+        Ok(Stmt::TryCatch {
+            try_block,
+            catch_variable,
+            catch_block,
+        })
+    }
+
+    fn block(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        let mut statements = Vec::new();
+        while !self.check(&Token::RBrace) && !self.is_at_end() {
+            statements.push(self.declaration()?);
+        }
+        self.consume(&Token::RBrace, "Expected '}' after block")?;
+        Ok(statements)
+    }
+
+    fn expression(&mut self) -> Result<Expr, ParseError> {
+        self.confidence_flow()
+    }
+
+    fn confidence_flow(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.assignment()?;
+        while self.match_token(&[Token::Tilde]) {
+            self.consume(&Token::Greater, "Expected '>' after '~'")?;
+            let confidence = self.expression()?;
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                operator: "~>".to_string(),
+                right: Box::new(confidence),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn assignment(&mut self) -> Result<Expr, ParseError> {
+        let expr = self.equality()?;
+        if self.match_token(&[Token::Equal]) {
+            let value = self.assignment()?;
+            match expr {
+                Expr::Identifier(name) => {
+                    return Ok(Expr::Binary {
+                        left: Box::new(Expr::Identifier(name)),
+                        operator: "=".to_string(),
+                        right: Box::new(value),
+                    });
+                }
+                _ => {
+                    return Err(ParseError {
+                        message: "Invalid assignment target".to_string(),
+                        position: self.current,
+                    });
+                }
+            }
+        }
+        Ok(expr)
+    }
+
+    fn equality(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.comparison()?;
+        while self.match_token(&[Token::EqualEqual, Token::BangEqual]) {
+            let operator = self.previous().to_string();
+            let right = self.comparison()?;
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn comparison(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.term()?;
+        while self.match_token(&[Token::Less, Token::LessEqual, Token::Greater, Token::GreaterEqual]) {
+            let operator = self.previous().to_string();
+            let right = self.term()?;
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn term(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.factor()?;
+        while self.match_token(&[Token::Plus, Token::Minus]) {
+            let operator = self.previous().to_string();
+            let right = self.factor()?;
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn factor(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.unary()?;
+        while self.match_token(&[Token::Star, Token::Slash]) {
+            let operator = self.previous().to_string();
+            let right = self.unary()?;
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn unary(&mut self) -> Result<Expr, ParseError> {
+        if self.match_token(&[Token::Minus, Token::Bang]) {
+            let operator = self.previous().to_string();
+            let operand = Box::new(self.unary()?);
+            Ok(Expr::Unary {
+                operator,
+                operand,
+            })
+        } else {
+            self.call()
+        }
+    }
+
+    fn call(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.primary()?;
+        loop {
+            if self.match_token(&[Token::LParen]) {
+                expr = self.finish_call(expr)?;
+            } else if self.match_token(&[Token::LBracket]) {
+                let index = self.expression()?;
+                self.consume(&Token::RBracket, "Expected ']' after array index")?;
+                expr = Expr::Index {
+                    array: Box::new(expr),
+                    index: Box::new(index),
+                };
+            } else {
+                break;
+            }
+        }
+        Ok(expr)
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> Result<Expr, ParseError> {
+        let mut arguments = Vec::new();
+        if !self.check(&Token::RParen) {
+            loop {
+                arguments.push(self.expression()?);
+                if !self.match_token(&[Token::Comma]) {
+                    break;
+                }
+            }
+        }
+        self.consume(&Token::RParen, "Expected ')' after arguments")?;
+        Ok(Expr::Call {
+            function: Box::new(callee),
+            arguments,
+        })
+    }
+
+    fn primary(&mut self) -> Result<Expr, ParseError> {
+        if self.match_token(&[Token::Float(0.0)]) {
+            if let Token::Float(n) = self.previous() {
+                Ok(Expr::Float(n))
+            } else {
+                unreachable!()
+            }
+        } else if self.match_token(&[Token::String("".to_string())]) {
+            if let Token::String(s) = self.previous() {
+                Ok(Expr::String(s))
+            } else {
+                unreachable!()
+            }
+        } else if self.match_token(&[Token::Boolean(false)]) {
+            if let Token::Boolean(b) = self.previous() {
+                Ok(Expr::Boolean(b))
+            } else {
+                unreachable!()
+            }
+        } else if self.match_token(&[Token::Identifier("".to_string())]) {
+            if let Token::Identifier(name) = self.previous() {
+                Ok(Expr::Identifier(name))
+            } else {
+                unreachable!()
+            }
+        } else if self.match_token(&[Token::LBracket]) {
+            let mut elements = Vec::new();
+            if !self.check(&Token::RBracket) {
+                loop {
+                    elements.push(self.expression()?);
+                    if !self.match_token(&[Token::Comma]) {
+                        break;
+                    }
+                }
+            }
+            self.consume(&Token::RBracket, "Expected ']' after array elements")?;
+            Ok(Expr::Array(elements))
+        } else if self.match_token(&[Token::LParen]) {
+            let expr = self.expression()?;
+            self.consume(&Token::RParen, "Expected ')' after expression")?;
+            Ok(expr)
+        } else {
+            Err(ParseError {
+                message: format!("Expected expression, got {:?}", self.peek()),
+                position: self.current,
+            })
+        }
+    }
+
+    fn match_token(&mut self, tokens: &[Token]) -> bool {
+        for token in tokens {
+            if self.check(token) {
+                self.advance();
+                return true;
+            }
+        }
+        false
+    }
+
+    fn check(&self, token: &Token) -> bool {
+        if self.is_at_end() {
+            false
+        } else {
+            std::mem::discriminant(&self.peek()) == std::mem::discriminant(token)
+        }
+    }
+
+    fn advance(&mut self) -> Token {
+        if !self.is_at_end() {
+            self.current += 1;
+        }
+        self.previous()
+    }
+
+    fn is_at_end(&self) -> bool {
+        self.current >= self.tokens.len()
+    }
+
+    fn peek(&self) -> Token {
+        if self.is_at_end() {
+            Token::Error
+        } else {
+            self.tokens[self.current].clone()
+        }
+    }
+
+    fn previous(&self) -> Token {
+        self.tokens[self.current - 1].clone()
+    }
+
+    fn consume(&mut self, token: &Token, message: &str) -> Result<Token, ParseError> {
+        if self.check(token) {
+            Ok(self.advance())
+        } else {
+            Err(ParseError {
+                message: message.to_string(),
+                position: self.current,
+            })
+        }
+    }
+
+    fn consume_identifier(&mut self, message: &str) -> Result<String, ParseError> {
+        if let Token::Identifier(name) = self.peek() {
+            self.advance();
+            Ok(name)
+        } else {
+            Err(ParseError {
+                message: message.to_string(),
+                position: self.current,
+            })
+        }
+    }
+
+    fn consume_string(&mut self, message: &str) -> Result<String, ParseError> {
+        if let Token::String(s) = self.peek() {
+            self.advance();
+            Ok(s)
+        } else {
+            Err(ParseError {
+                message: message.to_string(),
+                position: self.current,
+            })
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_expression() {
+        let tokens = vec![
+            Token::Float(1.0),
+            Token::Plus,
+            Token::Float(2.0),
+            Token::Semicolon,
+        ];
+        let mut parser = Parser::new(tokens);
+        let stmt = parser.parse().unwrap();
+        assert!(matches!(
+            stmt[0],
+            Stmt::Expression(Expr::Binary {
+                left: _,
+                operator: _,
+                right: _,
+            })
+        ));
+    }
+
+    #[test]
+    fn test_parse_let() {
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("x".to_string()),
+            Token::Equal,
+            Token::Float(42.0),
+            Token::Semicolon,
+        ];
+        let mut parser = Parser::new(tokens);
+        let stmt = parser.parse().unwrap();
+        assert!(matches!(
+            stmt[0],
+            Stmt::Let {
+                name: _,
+                initializer: _,
+            }
+        ));
+    }
+
+    #[test]
+    fn test_parse_function() {
+        let tokens = vec![
+            Token::Function,
+            Token::Identifier("test".to_string()),
+            Token::LParen,
+            Token::Identifier("x".to_string()),
+            Token::RParen,
+            Token::LBrace,
+            Token::Return,
+            Token::Float(1.0),
+            Token::Semicolon,
+            Token::RBrace,
+        ];
+        let mut parser = Parser::new(tokens);
+        let stmt = parser.parse().unwrap();
+        assert!(matches!(
+            stmt[0],
+            Stmt::Function {
+                name: _,
+                params: _,
+                body: _,
+            }
+        ));
     }
 } 

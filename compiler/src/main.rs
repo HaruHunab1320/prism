@@ -8,105 +8,78 @@ mod interpreter;
 mod stdlib;
 mod llm;
 
-use std::error::Error;
-use miette::{IntoDiagnostic, Result, Diagnostic};
+use std::io::{self, Write};
+use std::process;
+use colored::Colorize;
+use miette::{Diagnostic, SourceSpan, IntoDiagnostic};
 use thiserror::Error;
+
 use crate::lexer::Lexer;
-use crate::parser::{Parser, ParseError};
+use crate::types::Value;
 use crate::interpreter::Interpreter;
+use crate::parser::Parser;
 
-#[derive(Error, Debug, Diagnostic)]
-#[error("{message}")]
-pub struct PrismError {
+#[derive(Debug, Error, Diagnostic)]
+#[error("Parse error: {message}")]
+#[diagnostic(code(prism::parse_error))]
+struct PrismParseError {
+    #[source_code]
+    src: String,
+    #[label("Error occurred here")]
+    span: SourceSpan,
     message: String,
-    #[label("here")]
-    position: usize,
 }
 
-impl From<String> for PrismError {
-    fn from(message: String) -> Self {
-        Self {
-            message,
-            position: 0,
-        }
-    }
+#[derive(Debug, Error, Diagnostic)]
+#[error("Runtime error: {message}")]
+#[diagnostic(code(prism::runtime_error))]
+struct PrismRuntimeError {
+    #[source_code]
+    src: String,
+    message: String,
 }
 
-impl From<ParseError> for PrismError {
-    fn from(err: ParseError) -> Self {
-        Self {
-            message: err.to_string(),
-            position: err.location(),
-        }
-    }
-}
-
-fn main() -> Result<()> {
-    let input = std::fs::read_to_string("examples/basic.prism")
-        .into_diagnostic()?;
-
-    let lexer = Lexer::new(&input);
-    let mut parser = Parser::new(lexer);
+fn main() -> miette::Result<()> {
     let mut interpreter = Interpreter::new();
 
-    let mut last_value = None;
+    println!("{}", "Prism REPL".green().bold());
+    println!("Type 'exit' to quit\n");
 
-    while let Ok(stmt) = parser.parse_statement() {
-        last_value = Some(interpreter.eval(&stmt)
-            .map_err(PrismError::from)
-            .into_diagnostic()?);
+    loop {
+        print!("{}", "prism> ".blue().bold());
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+
+        let input = input.trim();
+        if input == "exit" {
+            process::exit(0);
+        }
+
+        match evaluate(&mut interpreter, input) {
+            Ok(value) => println!("{}", value.to_string().yellow()),
+            Err(err) => eprintln!("{}", err.to_string().red()),
+        }
     }
-
-    if let Some(value) = last_value {
-        println!("Result: {:?}", value);
-    }
-
-    Ok(())
 }
 
-fn evaluate(interpreter: &mut Interpreter, input: &str) -> Result<interpreter::Value> {
-    let lexer = Lexer::new(input);
-    let tokens: Vec<_> = lexer.collect();
-    println!("Tokens: {:?}", tokens);
+fn evaluate(interpreter: &mut Interpreter, input: &str) -> miette::Result<Value> {
+    let tokens = Lexer::new(input).collect::<Vec<_>>();
+    let mut parser = Parser::new(tokens);
+    let statements = parser.parse().map_err(|err| PrismParseError {
+        src: input.to_string(),
+        span: (err.position..err.position + 1).into(),
+        message: err.message,
+    })?;
 
-    let mut parser = Parser::new(tokens.into_iter());
-    let statements = parser.parse_program()
-        .map_err(PrismError::from)
-        .into_diagnostic()?;
-    
-    let mut last_value = interpreter::Value::Void;
+    let mut result = Value::Void;
     for stmt in statements {
-        last_value = interpreter.eval(&stmt)
-            .map_err(PrismError::from)
-            .into_diagnostic()?;
+        result = interpreter.eval_stmt(&stmt).map_err(|err| PrismRuntimeError {
+            src: input.to_string(),
+            message: err.to_string(),
+        })?;
     }
-    Ok(last_value)
-}
 
-fn evaluate_file(interpreter: &mut Interpreter, path: std::path::PathBuf) -> Result<()> {
-    let content = std::fs::read_to_string(path).into_diagnostic()?;
-    println!("Evaluating file content:\n{}", content);
-    let result = evaluate(interpreter, &content)?;
-    println!("Evaluation result:\n{:?}", result);
-    Ok(())
-}
-
-fn print_help() {
-    println!("Available commands:");
-    println!("  help     - Show this help message");
-    println!("  :q       - Quit the REPL");
-    println!("\nExample expressions:");
-    println!("  conf x = 0.8");
-    println!("  uncertain if (x ~> 0.7) {{ ... }}");
-    println!("  in context Medical {{ ... }}");
-    println!("  verify against sources {{ ... }}");
-    println!("\nStandard Library Functions:");
-    println!("  confidence.combine(x, y)   - Combine confidence values");
-    println!("  confidence.max(x, y)       - Get maximum confidence");
-    println!("  confidence.min(x, y)       - Get minimum confidence");
-    println!("  pattern.match(text, pat)   - Pattern matching");
-    println!("  pattern.semantic_match(text1, text2) - Semantic similarity");
-    println!("  pattern.transform(text, transform)   - Text transformation");
-    println!("  context.create(...)        - Create new context");
-    println!("  verify.source(...)         - Verify against source");
+    Ok(result)
 } 
