@@ -34,7 +34,7 @@ impl Parser {
         if self.match_token(&[Token::Let]) {
             self.let_declaration()
         } else if self.match_token(&[Token::Function]) {
-            self.function_declaration()
+            self.function()
         } else if self.match_token(&[Token::Context]) {
             self.context_declaration()
         } else if self.match_token(&[Token::Verify]) {
@@ -77,7 +77,7 @@ impl Parser {
         Ok(Stmt::Block(statements))
     }
 
-    fn function_declaration(&mut self) -> Result<Stmt, ParseError> {
+    fn function(&mut self) -> Result<Stmt, ParseError> {
         let name = self.consume_identifier("Expected function name")?;
         self.consume(&Token::LParen, "Expected '(' after function name")?;
         let mut params = Vec::new();
@@ -91,7 +91,7 @@ impl Parser {
         }
         self.consume(&Token::RParen, "Expected ')' after parameters")?;
         self.consume(&Token::LBrace, "Expected '{' before function body")?;
-        let body = self.block()?;
+        let body = Box::new(Stmt::Block(self.block()?));
         Ok(Stmt::Function {
             name,
             params,
@@ -111,15 +111,11 @@ impl Parser {
             self.consume(&Token::Semicolon, "Expected ';' after 'continue'")?;
             Ok(Stmt::Continue)
         } else if self.match_token(&[Token::Return]) {
-            let value = if !self.check(&Token::Semicolon) {
-                self.expression()?
-            } else {
-                Expr::Float(0.0) // Default return value
-            };
+            let value = self.expression()?;
             self.consume(&Token::Semicolon, "Expected ';' after return value")?;
             Ok(Stmt::Return(value))
         } else if self.match_token(&[Token::Try]) {
-            self.try_statement()
+            self.try_catch()
         } else if self.match_token(&[Token::Throw]) {
             let value = self.expression()?;
             self.consume(&Token::Semicolon, "Expected ';' after throw value")?;
@@ -152,8 +148,35 @@ impl Parser {
 
     fn while_statement(&mut self) -> Result<Stmt, ParseError> {
         self.consume(&Token::LParen, "Expected '(' after 'while'")?;
-        let condition = self.expression()?;
-        self.consume(&Token::RParen, "Expected ')' after while condition")?;
+        let condition = match self.expression() {
+            Ok(expr) => expr,
+            Err(e) => {
+                return Err(ParseError {
+                    message: format!("Error parsing while condition: {}", e.message),
+                    position: e.position,
+                });
+            }
+        };
+        let current_pos = self.current;
+        let current_token = if current_pos < self.tokens.len() {
+            Some(self.tokens[current_pos].clone())
+        } else {
+            None
+        };
+        let next_token = if current_pos + 1 < self.tokens.len() {
+            Some(self.tokens[current_pos + 1].clone())
+        } else {
+            None
+        };
+        match self.consume(&Token::RParen, "Expected ')' after while condition") {
+            Ok(_) => (),
+            Err(e) => {
+                return Err(ParseError {
+                    message: format!("Missing closing parenthesis: {} (current token: {:?}, next token: {:?})", e.message, current_token, next_token),
+                    position: e.position,
+                });
+            }
+        }
         let body = Box::new(self.statement()?);
         Ok(Stmt::While {
             condition,
@@ -161,15 +184,15 @@ impl Parser {
         })
     }
 
-    fn try_statement(&mut self) -> Result<Stmt, ParseError> {
+    fn try_catch(&mut self) -> Result<Stmt, ParseError> {
         self.consume(&Token::LBrace, "Expected '{' after 'try'")?;
-        let try_block = self.block()?;
+        let try_block = Box::new(Stmt::Block(self.block()?));
         self.consume(&Token::Catch, "Expected 'catch' after try block")?;
         self.consume(&Token::LParen, "Expected '(' after 'catch'")?;
         let catch_variable = self.consume_identifier("Expected catch variable name")?;
         self.consume(&Token::RParen, "Expected ')' after catch variable")?;
-        self.consume(&Token::LBrace, "Expected '{' after catch declaration")?;
-        let catch_block = self.block()?;
+        self.consume(&Token::LBrace, "Expected '{' before catch block")?;
+        let catch_block = Box::new(Stmt::Block(self.block()?));
         Ok(Stmt::TryCatch {
             try_block,
             catch_variable,
@@ -187,7 +210,16 @@ impl Parser {
     }
 
     fn expression(&mut self) -> Result<Expr, ParseError> {
-        self.confidence_flow()
+        let mut expr = self.confidence_flow()?;
+        while self.match_token(&[Token::Dot]) {
+            let name = self.consume_identifier("Expected property name after '.'")?;
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                operator: ".".to_string(),
+                right: Box::new(Expr::Identifier(name)),
+            };
+        }
+        Ok(expr)
     }
 
     fn confidence_flow(&mut self) -> Result<Expr, ParseError> {
@@ -308,6 +340,13 @@ impl Parser {
                     array: Box::new(expr),
                     index: Box::new(index),
                 };
+            } else if self.match_token(&[Token::Dot]) {
+                let name = self.consume_identifier("Expected property name after '.'")?;
+                expr = Expr::Binary {
+                    left: Box::new(expr),
+                    operator: ".".to_string(),
+                    right: Box::new(Expr::Identifier(name)),
+                };
             } else {
                 break;
             }
@@ -334,20 +373,20 @@ impl Parser {
 
     fn primary(&mut self) -> Result<Expr, ParseError> {
         if self.match_token(&[Token::Float(0.0)]) {
-            if let Token::Float(n) = self.previous() {
-                Ok(Expr::Float(n))
+            if let Token::Float(value) = self.previous() {
+                Ok(Expr::Float(value))
             } else {
                 unreachable!()
             }
         } else if self.match_token(&[Token::String("".to_string())]) {
-            if let Token::String(s) = self.previous() {
-                Ok(Expr::String(s))
+            if let Token::String(value) = self.previous() {
+                Ok(Expr::String(value))
             } else {
                 unreachable!()
             }
         } else if self.match_token(&[Token::Boolean(false)]) {
-            if let Token::Boolean(b) = self.previous() {
-                Ok(Expr::Boolean(b))
+            if let Token::Boolean(value) = self.previous() {
+                Ok(Expr::Boolean(value))
             } else {
                 unreachable!()
             }
@@ -369,6 +408,21 @@ impl Parser {
             }
             self.consume(&Token::RBracket, "Expected ']' after array elements")?;
             Ok(Expr::Array(elements))
+        } else if self.match_token(&[Token::LBrace]) {
+            let mut fields = Vec::new();
+            if !self.check(&Token::RBrace) {
+                loop {
+                    let name = self.consume_identifier("Expected field name")?;
+                    self.consume(&Token::Colon, "Expected ':' after field name")?;
+                    let value = self.expression()?;
+                    fields.push((name, value));
+                    if !self.match_token(&[Token::Comma]) {
+                        break;
+                    }
+                }
+            }
+            self.consume(&Token::RBrace, "Expected '}' after object fields")?;
+            Ok(Expr::Object(fields))
         } else if self.match_token(&[Token::LParen]) {
             let expr = self.expression()?;
             self.consume(&Token::RParen, "Expected ')' after expression")?;
@@ -395,7 +449,10 @@ impl Parser {
         if self.is_at_end() {
             false
         } else {
-            std::mem::discriminant(&self.peek()) == std::mem::discriminant(token)
+            match self.current_token() {
+                Some(t) => std::mem::discriminant(t) == std::mem::discriminant(token),
+                None => false,
+            }
         }
     }
 
@@ -410,11 +467,11 @@ impl Parser {
         self.current >= self.tokens.len()
     }
 
-    fn peek(&self) -> Token {
-        if self.is_at_end() {
-            Token::Error
+    fn peek(&self) -> Option<&Token> {
+        if self.current < self.tokens.len() {
+            Some(&self.tokens[self.current])
         } else {
-            self.tokens[self.current].clone()
+            None
         }
     }
 
@@ -434,7 +491,7 @@ impl Parser {
     }
 
     fn consume_identifier(&mut self, message: &str) -> Result<String, ParseError> {
-        if let Token::Identifier(name) = self.peek() {
+        if let Some(Token::Identifier(name)) = self.current_token().cloned() {
             self.advance();
             Ok(name)
         } else {
@@ -446,7 +503,7 @@ impl Parser {
     }
 
     fn consume_string(&mut self, message: &str) -> Result<String, ParseError> {
-        if let Token::String(s) = self.peek() {
+        if let Some(Token::String(s)) = self.current_token().cloned() {
             self.advance();
             Ok(s)
         } else {
@@ -454,6 +511,14 @@ impl Parser {
                 message: message.to_string(),
                 position: self.current,
             })
+        }
+    }
+
+    fn current_token(&self) -> Option<&Token> {
+        if self.current < self.tokens.len() {
+            Some(&self.tokens[self.current])
+        } else {
+            None
         }
     }
 }

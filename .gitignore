@@ -2,42 +2,76 @@
 **/target/
 **/*.rs.bk
 **/Cargo.lock
+**/*.o
+**/*.so
+**/*.dylib
+**/*.dll
+**/*.rlib
 
 # IDE specific files
 **/.vscode/
 **/.idea/
 **/*.iml
 **/.DS_Store
+**/*.swp
+**/*.swo
+**/.history/
 
 # Debug files
 **/*.pdb
+**/*.dSYM/
+**/*.su
+**/*.idb
+**/*.opendb
 
 # Generated files
 **/*.generated.rs
+**/generated/
+**/*.gen.*
 
 # Environment files
-**/.env
-**/.env.local
-**/.env.development
-**/.env.test
-**/.env.production
+**/.env*
+!.env.example
 
 # Build output
 **/dist/
 **/build/
+**/out/
+**/.output/
 
 # Dependencies
 **/node_modules/
+**/.cargo/
+**/vendor/
+**/google-generative-ai-rs/
 
-# Logs
+# Logs and diagnostics
 **/*.log
 **/npm-debug.log*
 **/yarn-debug.log*
 **/yarn-error.log*
+**/.npm
+**/.yarn
+**/debug/
+**/temp/
+**/tmp/
 
-# Testing
+# Testing and coverage
 **/coverage/
+**/.nyc_output/
+**/junit.xml
+**/.pytest_cache/
+**/__pycache__/
+**/*.pyc
 
 # Documentation generated
 **/doc/
-**/docs/generated/ 
+**/docs/generated/
+**/.docusaurus
+**/book/
+
+# OS specific
+**/.Trash/
+**/.Trashes
+**/ehthumbs.db
+**/Thumbs.db 

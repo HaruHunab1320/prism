@@ -111,6 +111,9 @@ pub enum Token {
     #[token(".")]
     Dot,
 
+    #[token(":")]
+    Colon,
+
     #[token(";")]
     Semicolon,
 
@@ -144,6 +147,7 @@ pub enum Token {
 
     #[regex(r"[ \t\n\r]+", logos::skip)]
     #[regex(r"//[^\n]*", logos::skip)]
+    #[error]
     Error,
 }
 
@@ -186,6 +190,7 @@ impl fmt::Display for Token {
             Token::RBracket => write!(f, "]"),
             Token::Comma => write!(f, ","),
             Token::Dot => write!(f, "."),
+            Token::Colon => write!(f, ":"),
             Token::Semicolon => write!(f, ";"),
             Token::Tilde => write!(f, "~"),
             Token::String(s) => write!(f, "\"{}\"", s),
@@ -197,23 +202,41 @@ impl fmt::Display for Token {
     }
 }
 
-pub struct Lexer<'source> {
-    inner: logos::Lexer<'source, Token>,
+pub struct Lexer<'a> {
+    inner: logos::Lexer<'a, Token>,
 }
 
-impl<'source> Lexer<'source> {
-    pub fn new(source: &'source str) -> Self {
+impl<'a> Lexer<'a> {
+    pub fn new(input: &'a str) -> Self {
         Self {
-            inner: Token::lexer(source),
+            inner: Token::lexer(input),
         }
     }
 }
 
-impl<'source> Iterator for Lexer<'source> {
+impl<'a> Iterator for Lexer<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().and_then(|result| result.ok())
+        self.inner.next()
+    }
+}
+
+impl Token {
+    pub fn is_identifier(&self) -> bool {
+        matches!(self, Token::Identifier(_))
+    }
+
+    pub fn is_string(&self) -> bool {
+        matches!(self, Token::String(_))
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(self, Token::Float(_))
+    }
+
+    pub fn is_boolean(&self) -> bool {
+        matches!(self, Token::Boolean(_))
     }
 }
 

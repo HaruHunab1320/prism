@@ -1,123 +1,68 @@
-use crate::ast::Stmt;
-use thiserror::Error;
+use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use crate::error::RuntimeError;
+use crate::interpreter::Interpreter;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub enum Value {
     Float(f64),
     String(String),
     Boolean(bool),
     Array(Vec<Value>),
-    Function(Vec<String>, Vec<Stmt>),
-    Void,
+    Object(Vec<(String, Value)>),
+    Function(Arc<dyn Fn(Vec<Value>) -> Result<Value, RuntimeError> + Send + Sync>),
+    AsyncFn(Arc<dyn Fn(Vec<Value>) -> Pin<Box<dyn Future<Output = Result<Value, RuntimeError>> + Send>> + Send + Sync>),
+    NativeFunction(Arc<dyn Fn(&mut Interpreter, Vec<Value>) -> Pin<Box<dyn Future<Output = Result<Value, RuntimeError>> + Send>> + Send + Sync>),
 }
 
-impl std::fmt::Display for Value {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Float(n) => write!(f, "Float({})", n),
+            Value::String(s) => write!(f, "String({})", s),
+            Value::Boolean(b) => write!(f, "Boolean({})", b),
+            Value::Array(elements) => f.debug_list().entries(elements).finish(),
+            Value::Object(fields) => {
+                f.debug_map().entries(fields.iter().map(|(k, v)| (k, v))).finish()
+            }
+            Value::Function(_) => write!(f, "Function"),
+            Value::AsyncFn(_) => write!(f, "AsyncFn"),
+            Value::NativeFunction(_) => write!(f, "NativeFunction"),
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Float(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "\"{}\"", s),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Array(elements) => {
                 write!(f, "[")?;
-                for (i, elem) in elements.iter().enumerate() {
+                for (i, element) in elements.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", elem)?;
+                    write!(f, "{}", element)?;
                 }
                 write!(f, "]")
             }
-            Value::Function(params, _) => {
-                write!(f, "fn(")?;
-                for (i, param) in params.iter().enumerate() {
+            Value::Object(fields) => {
+                write!(f, "{{")?;
+                for (i, (name, value)) in fields.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", param)?;
+                    write!(f, "{}: {}", name, value)?;
                 }
-                write!(f, ")")
+                write!(f, "}}")
             }
-            Value::Void => write!(f, "void"),
+            Value::Function(_) => write!(f, "<function>"),
+            Value::AsyncFn(_) => write!(f, "<async function>"),
+            Value::NativeFunction(_) => write!(f, "<native function>"),
         }
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum RuntimeError {
-    #[error("Undefined variable: {0}")]
-    UndefinedVariable(String),
-    #[error("Type error: {0}")]
-    TypeError(String),
-    #[error("Division by zero")]
-    DivisionByZero,
-    #[error("Index {0} out of bounds for array of length {1}")]
-    IndexOutOfBounds(usize, usize),
-    #[error("Invalid array access")]
-    InvalidArrayAccess,
-    #[error("Undefined field: {0}")]
-    UndefinedField(String),
-    #[error("Return outside of function")]
-    Return(Value),
-    #[error("Break outside of loop")]
-    Break,
-    #[error("Continue outside of loop")]
-    Continue,
-    #[error("Uncaught exception: {0}")]
-    Throw(Value),
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_value_display() {
-        assert_eq!(Value::Float(42.0).to_string(), "42");
-        assert_eq!(Value::String("hello".to_string()).to_string(), "\"hello\"");
-        assert_eq!(Value::Boolean(true).to_string(), "true");
-        assert_eq!(Value::Array(vec![Value::Float(1.0), Value::Float(2.0)]).to_string(), "[1, 2]");
-        assert_eq!(Value::Function(vec!["x".to_string(), "y".to_string()], vec![]).to_string(), "fn(x, y)");
-        assert_eq!(Value::Void.to_string(), "void");
-    }
-
-    #[test]
-    fn test_runtime_error_display() {
-        assert_eq!(
-            RuntimeError::UndefinedVariable("x".to_string()).to_string(),
-            "Undefined variable: x"
-        );
-        assert_eq!(
-            RuntimeError::TypeError("invalid operation".to_string()).to_string(),
-            "Type error: invalid operation"
-        );
-        assert_eq!(RuntimeError::DivisionByZero.to_string(), "Division by zero");
-        assert_eq!(
-            RuntimeError::IndexOutOfBounds(5, 3).to_string(),
-            "Index 5 out of bounds for array of length 3"
-        );
-        assert_eq!(
-            RuntimeError::InvalidArrayAccess.to_string(),
-            "Invalid array access"
-        );
-        assert_eq!(
-            RuntimeError::UndefinedField("x".to_string()).to_string(),
-            "Undefined field: x"
-        );
-        assert_eq!(
-            RuntimeError::Return(Value::Void).to_string(),
-            "Return outside of function"
-        );
-        assert_eq!(
-            RuntimeError::Break.to_string(),
-            "Break outside of loop"
-        );
-        assert_eq!(
-            RuntimeError::Continue.to_string(),
-            "Continue outside of loop"
-        );
-        assert_eq!(
-            RuntimeError::Throw(Value::String("error".to_string())).to_string(),
-            "Uncaught exception: \"error\""
-        );
     }
 } 

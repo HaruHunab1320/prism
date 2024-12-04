@@ -1,243 +1,258 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 use crate::ast::{Expr, Stmt};
-use crate::types::{Value, RuntimeError};
-use std::collections::HashMap;
-
-pub struct Environment {
-    scopes: Vec<HashMap<String, Value>>,
-}
-
-impl Environment {
-    pub fn new() -> Self {
-        let mut env = Self {
-            scopes: Vec::new(),
-        };
-        env.push_scope();
-        env
-    }
-
-    pub fn push_scope(&mut self) {
-        self.scopes.push(HashMap::new());
-    }
-
-    pub fn pop_scope(&mut self) {
-        self.scopes.pop();
-    }
-
-    pub fn define(&mut self, name: String, value: Value) {
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(name, value);
-        }
-    }
-
-    pub fn assign(&mut self, name: &str, value: Value) -> Result<(), RuntimeError> {
-        for scope in self.scopes.iter_mut().rev() {
-            if scope.contains_key(name) {
-                scope.insert(name.to_string(), value);
-                return Ok(());
-            }
-        }
-        Err(RuntimeError::UndefinedVariable(name.to_string()))
-    }
-
-    pub fn get(&self, name: &str) -> Result<Value, RuntimeError> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(value) = scope.get(name) {
-                return Ok(value.clone());
-            }
-        }
-        Err(RuntimeError::UndefinedVariable(name.to_string()))
-    }
-}
+use crate::environment::Environment;
+use crate::error::RuntimeError;
+use crate::types::Value;
 
 pub struct Interpreter {
-    environment: Environment,
+    pub environment: Environment,
+    pub metrics: Metrics,
+}
+
+pub struct Metrics {
+    pub total_diagnoses: f64,
+    pub correct_diagnoses: f64,
+    pub false_positives: f64,
+    pub false_negatives: f64,
+    pub confidence_sum: f64,
+    pub execution_time: f64,
+}
+
+impl Metrics {
+    pub fn new() -> Self {
+        Self {
+            total_diagnoses: 0.0,
+            correct_diagnoses: 0.0,
+            false_positives: 0.0,
+            false_negatives: 0.0,
+            confidence_sum: 0.0,
+            execution_time: 0.0,
+        }
+    }
+
+    pub fn accuracy(&self) -> f64 {
+        if self.total_diagnoses == 0.0 {
+            0.0
+        } else {
+            self.correct_diagnoses / self.total_diagnoses
+        }
+    }
+
+    pub fn precision(&self) -> f64 {
+        if self.correct_diagnoses + self.false_positives == 0.0 {
+            0.0
+        } else {
+            self.correct_diagnoses / (self.correct_diagnoses + self.false_positives)
+        }
+    }
+
+    pub fn recall(&self) -> f64 {
+        if self.correct_diagnoses + self.false_negatives == 0.0 {
+            0.0
+        } else {
+            self.correct_diagnoses / (self.correct_diagnoses + self.false_negatives)
+        }
+    }
+
+    pub fn f1_score(&self) -> f64 {
+        let precision = self.precision();
+        let recall = self.recall();
+        if precision + recall == 0.0 {
+            0.0
+        } else {
+            2.0 * (precision * recall) / (precision + recall)
+        }
+    }
+
+    pub fn average_confidence(&self) -> f64 {
+        if self.total_diagnoses == 0.0 {
+            0.0
+        } else {
+            self.confidence_sum / self.total_diagnoses
+        }
+    }
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         Self {
             environment: Environment::new(),
+            metrics: Metrics::new(),
         }
     }
 
-    pub fn eval_stmt(&mut self, stmt: &Stmt) -> Result<Value, RuntimeError> {
-        match stmt {
-            Stmt::Expression(expr) => self.eval_expr(expr),
-            Stmt::Let { name, initializer } => {
-                let value = self.eval_expr(initializer)?;
-                self.environment.define(name.clone(), value.clone());
-                Ok(value)
-            }
-            Stmt::Block(statements) => {
-                self.environment.push_scope();
-                let mut result = Value::Void;
-                for stmt in statements {
-                    result = self.eval_stmt(stmt)?;
-                }
-                self.environment.pop_scope();
-                Ok(result)
-            }
-            Stmt::If { condition, then_branch, else_branch } => {
-                let cond = self.eval_expr(condition)?;
-                match cond {
-                    Value::Boolean(true) => self.eval_stmt(then_branch),
-                    Value::Boolean(false) => {
-                        if let Some(else_branch) = else_branch {
-                            self.eval_stmt(else_branch)
-                        } else {
-                            Ok(Value::Void)
-                        }
-                    }
-                    _ => Err(RuntimeError::TypeError("Condition must be a boolean".to_string())),
-                }
-            }
-            Stmt::While { condition, body } => {
-                while let Value::Boolean(true) = self.eval_expr(condition)? {
-                    match self.eval_stmt(body) {
-                        Err(RuntimeError::Break) => break,
-                        Err(RuntimeError::Continue) => continue,
-                        Err(e) => return Err(e),
-                        Ok(_) => (),
-                    }
-                }
-                Ok(Value::Void)
-            }
-            Stmt::Break => Err(RuntimeError::Break),
-            Stmt::Continue => Err(RuntimeError::Continue),
-            Stmt::TryCatch { try_block, catch_variable, catch_block } => {
-                let try_result = self.eval_stmt(&Stmt::Block(try_block.clone()));
-                match try_result {
-                    Ok(value) => Ok(value),
-                    Err(RuntimeError::Throw(value)) => {
-                        self.environment.push_scope();
-                        self.environment.define(catch_variable.clone(), value);
-                        let result = self.eval_stmt(&Stmt::Block(catch_block.clone()));
-                        self.environment.pop_scope();
-                        result
-                    }
-                    Err(e) => Err(e),
-                }
-            }
-            Stmt::Function { name, params, body } => {
-                self.environment.define(name.clone(), Value::Function(params.clone(), body.clone()));
-                Ok(Value::Void)
-            }
-            Stmt::Return(expr) => {
-                let value = self.eval_expr(expr)?;
-                Err(RuntimeError::Return(value))
-            }
-            Stmt::Throw(expr) => {
-                let value = self.eval_expr(expr)?;
-                Err(RuntimeError::Throw(value))
-            }
-        }
+    pub fn register_native_function<F>(&mut self, name: &str, f: F)
+    where
+        F: Fn(&mut Interpreter, Vec<Value>) -> Pin<Box<dyn Future<Output = Result<Value, RuntimeError>> + Send>> + Send + Sync + 'static,
+    {
+        self.environment.define(
+            name,
+            Value::NativeFunction(Arc::new(f)),
+        );
     }
 
-    pub fn eval_expr(&mut self, expr: &Expr) -> Result<Value, RuntimeError> {
-        match expr {
-            Expr::Float(n) => Ok(Value::Float(*n)),
-            Expr::String(s) => Ok(Value::String(s.clone())),
-            Expr::Boolean(b) => Ok(Value::Boolean(*b)),
-            Expr::Identifier(name) => self.environment.get(name),
-            Expr::Array(elements) => {
-                let mut values = Vec::new();
-                for element in elements {
-                    values.push(self.eval_expr(element)?);
+    pub fn eval_expr<'a>(&'a mut self, expr: &'a Expr) -> Pin<Box<dyn Future<Output = Result<Value, RuntimeError>> + Send + 'a>> {
+        Box::pin(async move {
+            match expr {
+                Expr::Float(n) => Ok(Value::Float(*n)),
+                Expr::String(s) => Ok(Value::String(s.clone())),
+                Expr::Boolean(b) => Ok(Value::Boolean(*b)),
+                Expr::Identifier(name) => {
+                    self.environment.get(name).ok_or_else(|| RuntimeError::UndefinedVariable(name.clone()))
                 }
-                Ok(Value::Array(values))
-            }
-            Expr::Binary { left, operator, right } => {
-                let left = self.eval_expr(left)?;
-                let right = self.eval_expr(right)?;
-                match (left.clone(), operator.as_str(), right.clone()) {
-                    (Value::Float(a), "+", Value::Float(b)) => Ok(Value::Float(a + b)),
-                    (Value::Float(a), "-", Value::Float(b)) => Ok(Value::Float(a - b)),
-                    (Value::Float(a), "*", Value::Float(b)) => Ok(Value::Float(a * b)),
-                    (Value::Float(a), "/", Value::Float(b)) => {
-                        if b == 0.0 {
-                            Err(RuntimeError::DivisionByZero)
-                        } else {
-                            Ok(Value::Float(a / b))
-                        }
+                Expr::Array(elements) => {
+                    let mut values = Vec::new();
+                    for element in elements {
+                        values.push(self.eval_expr(element).await?);
                     }
-                    (Value::Float(a), "==", Value::Float(b)) => Ok(Value::Boolean(a == b)),
-                    (Value::Float(a), "!=", Value::Float(b)) => Ok(Value::Boolean(a != b)),
-                    (Value::Float(a), "<", Value::Float(b)) => Ok(Value::Boolean(a < b)),
-                    (Value::Float(a), "<=", Value::Float(b)) => Ok(Value::Boolean(a <= b)),
-                    (Value::Float(a), ">", Value::Float(b)) => Ok(Value::Boolean(a > b)),
-                    (Value::Float(a), ">=", Value::Float(b)) => Ok(Value::Boolean(a >= b)),
-                    (Value::Boolean(a), "&&", Value::Boolean(b)) => Ok(Value::Boolean(a && b)),
-                    (Value::Boolean(a), "||", Value::Boolean(b)) => Ok(Value::Boolean(a || b)),
-                    (Value::String(a), "+", Value::String(b)) => Ok(Value::String(a + &b)),
-                    (Value::Float(a), "~>", Value::Float(b)) => {
-                        if b < 0.0 || b > 1.0 {
-                            Err(RuntimeError::TypeError("Confidence value must be between 0 and 1".to_string()))
-                        } else {
-                            Ok(Value::Float(a * b))
-                        }
+                    Ok(Value::Array(values))
+                }
+                Expr::Object(fields) => {
+                    let mut values = Vec::new();
+                    for (name, value) in fields {
+                        values.push((name.clone(), self.eval_expr(value).await?));
                     }
-                    _ => Err(RuntimeError::TypeError(format!(
-                        "Invalid operation: {:?} {} {:?}",
-                        left, operator, right
-                    ))),
+                    Ok(Value::Object(values))
                 }
-            }
-            Expr::Unary { operator, operand } => {
-                let operand = self.eval_expr(operand)?;
-                match (operator.as_str(), operand.clone()) {
-                    ("-", Value::Float(n)) => Ok(Value::Float(-n)),
-                    ("!", Value::Boolean(b)) => Ok(Value::Boolean(!b)),
-                    _ => Err(RuntimeError::TypeError(format!(
-                        "Invalid unary operation: {}{:?}",
-                        operator, operand
-                    ))),
-                }
-            }
-            Expr::Call { function, arguments } => {
-                let function = self.eval_expr(function)?;
-                let mut args = Vec::new();
-                for arg in arguments {
-                    args.push(self.eval_expr(arg)?);
-                }
-                match function {
-                    Value::Function(params, body) => {
-                        if params.len() != args.len() {
-                            return Err(RuntimeError::TypeError(format!(
-                                "Expected {} arguments but got {}",
-                                params.len(),
-                                args.len()
-                            )));
-                        }
-                        self.environment.push_scope();
-                        for (param, arg) in params.iter().zip(args) {
-                            self.environment.define(param.clone(), arg);
-                        }
-                        let result = match self.eval_stmt(&Stmt::Block(body)) {
-                            Ok(value) => Ok(value),
-                            Err(RuntimeError::Return(value)) => Ok(value),
-                            Err(e) => Err(e),
-                        };
-                        self.environment.pop_scope();
-                        result
+                Expr::Binary { left, operator, right } => {
+                    let left = self.eval_expr(left).await?;
+                    let right = self.eval_expr(right).await?;
+                    match operator.as_str() {
+                        "+" => left.add(&right),
+                        "-" => left.subtract(&right),
+                        "*" => left.multiply(&right),
+                        "/" => left.divide(&right),
+                        "==" => left.equals(&right),
+                        "!=" => left.not_equals(&right),
+                        "<" => left.less_than(&right),
+                        "<=" => left.less_than_or_equal(&right),
+                        ">" => left.greater_than(&right),
+                        ">=" => left.greater_than_or_equal(&right),
+                        "&&" => left.and(&right),
+                        "||" => left.or(&right),
+                        "." => left.get_property(&right),
+                        "~>" => left.with_confidence(&right),
+                        _ => Err(RuntimeError::TypeError(format!("Unknown operator '{}'", operator))),
                     }
-                    _ => Err(RuntimeError::TypeError("Not a function".to_string())),
                 }
-            }
-            Expr::Index { array, index } => {
-                let array = self.eval_expr(array)?;
-                let index = self.eval_expr(index)?;
-                match (array, index) {
-                    (Value::Array(elements), Value::Float(i)) => {
-                        let i = i as usize;
-                        if i < elements.len() {
-                            Ok(elements[i].clone())
-                        } else {
-                            Err(RuntimeError::IndexOutOfBounds(i, elements.len()))
-                        }
+                Expr::Unary { operator, operand } => {
+                    let value = self.eval_expr(operand).await?;
+                    match operator.as_str() {
+                        "-" => value.negate(),
+                        "!" => value.not(),
+                        _ => Err(RuntimeError::TypeError(format!("Unknown operator '{}'", operator))),
                     }
-                    _ => Err(RuntimeError::InvalidArrayAccess),
+                }
+                Expr::Call { function, arguments } => {
+                    let callee = self.eval_expr(function).await?;
+                    let mut args = Vec::new();
+                    for arg in arguments {
+                        args.push(self.eval_expr(arg).await?);
+                    }
+                    callee.call(self, args).await
+                }
+                Expr::Index { array, index } => {
+                    let array = self.eval_expr(array).await?;
+                    let index = self.eval_expr(index).await?;
+                    array.get_index(&index)
                 }
             }
-        }
+        })
     }
-} 
+
+    pub fn eval_stmt<'a>(&'a mut self, stmt: &'a Stmt) -> Pin<Box<dyn Future<Output = Result<Value, RuntimeError>> + Send + 'a>> {
+        Box::pin(async move {
+            match stmt {
+                Stmt::Expression(expr) => self.eval_expr(expr).await,
+                Stmt::Let { name, initializer } => {
+                    let value = self.eval_expr(initializer).await?;
+                    self.environment.define(name, value.clone());
+                    Ok(Value::Object(vec![]))
+                }
+                Stmt::Block(statements) => {
+                    let mut result = Value::Object(vec![]);
+                    for stmt in statements {
+                        result = self.eval_stmt(stmt).await?;
+                    }
+                    Ok(result)
+                }
+                Stmt::If { condition, then_branch, else_branch } => {
+                    let condition = self.eval_expr(condition).await?;
+                    match condition {
+                        Value::Boolean(true) => self.eval_stmt(then_branch).await,
+                        Value::Boolean(false) => {
+                            if let Some(else_branch) = else_branch {
+                                self.eval_stmt(else_branch).await
+                            } else {
+                                Ok(Value::Object(vec![]))
+                            }
+                        }
+                        _ => Err(RuntimeError::TypeError("Condition must be a boolean".to_string())),
+                    }
+                }
+                Stmt::While { condition, body } => {
+                    let mut result = Value::Object(vec![]);
+                    while let Value::Boolean(true) = self.eval_expr(condition).await? {
+                        result = self.eval_stmt(body).await?;
+                    }
+                    Ok(result)
+                }
+                Stmt::Function { name, params, body } => {
+                    let params = params.clone();
+                    let body = body.clone();
+                    let env = self.environment.clone();
+                    let func = Value::AsyncFn(Arc::new(move |args: Vec<Value>| {
+                        let params = params.clone();
+                        let body = body.clone();
+                        let env = env.clone();
+                        Box::pin(async move {
+                            if args.len() != params.len() {
+                                return Err(RuntimeError::TypeError(format!(
+                                    "Expected {} arguments but got {}",
+                                    params.len(),
+                                    args.len()
+                                )));
+                            }
+                            let mut interpreter = Interpreter {
+                                environment: env.clone(),
+                                metrics: Metrics::new(),
+                            };
+                            for (param, arg) in params.iter().zip(args) {
+                                interpreter.environment.define(param, arg);
+                            }
+                            match interpreter.eval_stmt(&body).await {
+                                Ok(value) => Ok(value),
+                                Err(RuntimeError::Return(value)) => Ok(value),
+                                Err(e) => Err(e),
+                            }
+                        })
+                    }));
+                    self.environment.define(name, func);
+                    Ok(Value::Object(vec![]))
+                }
+                Stmt::Return(expr) => {
+                    let value = self.eval_expr(expr).await?;
+                    Err(RuntimeError::Return(value))
+                }
+                Stmt::Break => Err(RuntimeError::Break),
+                Stmt::Continue => Err(RuntimeError::Continue),
+                Stmt::TryCatch { try_block, catch_variable, catch_block } => {
+                    match self.eval_stmt(try_block).await {
+                        Ok(value) => Ok(value),
+                        Err(RuntimeError::Throw(value)) => {
+                            self.environment.define(catch_variable, value);
+                            self.eval_stmt(catch_block).await
+                        }
+                        Err(e) => Err(e),
+                    }
+                }
+                Stmt::Throw(expr) => {
+                    let value = self.eval_expr(expr).await?;
+                    Err(RuntimeError::Throw(value))
+                }
+            }
+        })
+    }
+}

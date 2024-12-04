@@ -7,6 +7,7 @@ pub enum Expr {
     Boolean(bool),
     Identifier(String),
     Array(Vec<Expr>),
+    Object(Vec<(String, Expr)>),
     Binary {
         left: Box<Expr>,
         operator: String,
@@ -43,19 +44,19 @@ pub enum Stmt {
         condition: Expr,
         body: Box<Stmt>,
     },
-    Break,
-    Continue,
-    TryCatch {
-        try_block: Vec<Stmt>,
-        catch_variable: String,
-        catch_block: Vec<Stmt>,
-    },
     Function {
         name: String,
         params: Vec<String>,
-        body: Vec<Stmt>,
+        body: Box<Stmt>,
     },
     Return(Expr),
+    Break,
+    Continue,
+    TryCatch {
+        try_block: Box<Stmt>,
+        catch_variable: String,
+        catch_block: Box<Stmt>,
+    },
     Throw(Expr),
 }
 
@@ -68,13 +69,23 @@ impl fmt::Display for Expr {
             Expr::Identifier(name) => write!(f, "{}", name),
             Expr::Array(elements) => {
                 write!(f, "[")?;
-                for (i, elem) in elements.iter().enumerate() {
+                for (i, element) in elements.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", elem)?;
+                    write!(f, "{}", element)?;
                 }
                 write!(f, "]")
+            }
+            Expr::Object(fields) => {
+                write!(f, "{{")?;
+                for (i, (name, value)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}: {}", name, value)?;
+                }
+                write!(f, "}}")
             }
             Expr::Binary { left, operator, right } => {
                 write!(f, "({} {} {})", left, operator, right)
@@ -103,9 +114,7 @@ impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Stmt::Expression(expr) => write!(f, "{};", expr),
-            Stmt::Let { name, initializer } => {
-                write!(f, "let {} = {};", name, initializer)
-            }
+            Stmt::Let { name, initializer } => write!(f, "let {} = {};", name, initializer),
             Stmt::Block(statements) => {
                 writeln!(f, "{{")?;
                 for stmt in statements {
@@ -114,31 +123,14 @@ impl fmt::Display for Stmt {
                 write!(f, "}}")
             }
             Stmt::If { condition, then_branch, else_branch } => {
-                writeln!(f, "if ({}) {{", condition)?;
-                writeln!(f, "    {}", then_branch)?;
+                write!(f, "if {} {}", condition, then_branch)?;
                 if let Some(else_branch) = else_branch {
-                    writeln!(f, "}} else {{")?;
-                    writeln!(f, "    {}", else_branch)?;
+                    write!(f, " else {}", else_branch)?;
                 }
-                write!(f, "}}")
+                Ok(())
             }
             Stmt::While { condition, body } => {
-                writeln!(f, "while ({}) {{", condition)?;
-                writeln!(f, "    {}", body)?;
-                write!(f, "}}")
-            }
-            Stmt::Break => write!(f, "break;"),
-            Stmt::Continue => write!(f, "continue;"),
-            Stmt::TryCatch { try_block, catch_variable, catch_block } => {
-                writeln!(f, "try {{")?;
-                for stmt in try_block {
-                    writeln!(f, "    {}", stmt)?;
-                }
-                writeln!(f, "}} catch ({}) {{", catch_variable)?;
-                for stmt in catch_block {
-                    writeln!(f, "    {}", stmt)?;
-                }
-                write!(f, "}}")
+                write!(f, "while {} {}", condition, body)
             }
             Stmt::Function { name, params, body } => {
                 write!(f, "fn {}(", name)?;
@@ -148,13 +140,14 @@ impl fmt::Display for Stmt {
                     }
                     write!(f, "{}", param)?;
                 }
-                writeln!(f, ") {{")?;
-                for stmt in body {
-                    writeln!(f, "    {}", stmt)?;
-                }
-                write!(f, "}}")
+                write!(f, ") {}", body)
             }
             Stmt::Return(expr) => write!(f, "return {};", expr),
+            Stmt::Break => write!(f, "break;"),
+            Stmt::Continue => write!(f, "continue;"),
+            Stmt::TryCatch { try_block, catch_variable, catch_block } => {
+                write!(f, "try {} catch {} {}", try_block, catch_variable, catch_block)
+            }
             Stmt::Throw(expr) => write!(f, "throw {};", expr),
         }
     }
@@ -179,9 +172,7 @@ mod tests {
         let stmt = Stmt::Function {
             name: "test".to_string(),
             params: vec!["x".to_string(), "y".to_string()],
-            body: vec![
-                Stmt::Return(Expr::Float(1.0)),
-            ],
+            body: Box::new(Stmt::Return(Expr::Float(1.0))),
         };
         assert_eq!(
             stmt.to_string(),
