@@ -1,5 +1,6 @@
 use thiserror::Error;
 use crate::types::Value;
+use google_generative_ai_rs::v1::errors::GoogleAPIError;
 
 #[derive(Debug, Error)]
 pub enum RuntimeError {
@@ -35,4 +36,19 @@ pub enum RuntimeError {
 
     #[error("Async error: {0}")]
     AsyncError(String),
+
+    #[error("Parse error: {0}")]
+    ParseError(String),
+
+    #[error("IO error: {0}")]
+    IOError(String),
+
+    #[error("API error: {0}")]
+    APIError(String),
+}
+
+impl From<GoogleAPIError> for RuntimeError {
+    fn from(error: GoogleAPIError) -> Self {
+        RuntimeError::APIError(error.to_string())
+    }
 } 

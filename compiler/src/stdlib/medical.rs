@@ -1,13 +1,10 @@
 use std::sync::Arc;
-use std::future::Future;
-use std::pin::Pin;
 use crate::interpreter::Interpreter;
 use crate::error::RuntimeError;
 use crate::types::Value;
 use google_generative_ai_rs::v1::api::Client;
-use google_generative_ai_rs::v1::gemini::{Content, Part, Role, ResponseType};
-use google_generative_ai_rs::v1::gemini::request::GenerationConfig;
-use futures::StreamExt;
+use google_generative_ai_rs::v1::gemini::{Content, Part, Role};
+use google_generative_ai_rs::v1::gemini::request::{Request, GenerationConfig};
 
 pub struct MedicalLLM {
     client: Arc<Client>,
@@ -66,7 +63,14 @@ impl MedicalLLM {
                         stop_sequences: Some(vec![]),
                     };
 
-                    let response = (*client).generate_content_async("gemini-pro", &content, Some(&config), ResponseType::GenerateContent).await?;
+                    let request = Request {
+                        contents: vec![content],
+                        generation_config: Some(config),
+                        safety_settings: vec![],
+                        tools: vec![],
+                    };
+
+                    let response = (*client).post(60, &request).await?.rest().ok_or_else(|| RuntimeError::AsyncError("No response received".to_string()))?;
                     if let Some(text) = response.candidates.first().and_then(|c| c.content.parts.first()).and_then(|p| p.text.as_ref()) {
                         match text.trim().parse::<f64>() {
                             Ok(confidence) => Ok(Value::Float(confidence)),
@@ -130,7 +134,14 @@ impl MedicalLLM {
                         stop_sequences: Some(vec![]),
                     };
 
-                    let response = (*client).generate_content_async("gemini-pro", &content, Some(&config), ResponseType::GenerateContent).await?;
+                    let request = Request {
+                        contents: vec![content],
+                        generation_config: Some(config),
+                        safety_settings: vec![],
+                        tools: vec![],
+                    };
+
+                    let response = (*client).post(60, &request).await?.rest().ok_or_else(|| RuntimeError::AsyncError("No response received".to_string()))?;
                     if let Some(text) = response.candidates.first().and_then(|c| c.content.parts.first()).and_then(|p| p.text.as_ref()) {
                         match text.trim().parse::<f64>() {
                             Ok(confidence) => Ok(Value::Float(confidence)),
@@ -184,7 +195,14 @@ impl MedicalLLM {
                         stop_sequences: Some(vec![]),
                     };
 
-                    let response = (*client).generate_content_async("gemini-pro", &content, Some(&config), ResponseType::GenerateContent).await?;
+                    let request = Request {
+                        contents: vec![content],
+                        generation_config: Some(config),
+                        safety_settings: vec![],
+                        tools: vec![],
+                    };
+
+                    let response = (*client).post(60, &request).await?.rest().ok_or_else(|| RuntimeError::AsyncError("No response received".to_string()))?;
                     if let Some(text) = response.candidates.first().and_then(|c| c.content.parts.first()).and_then(|p| p.text.as_ref()) {
                         Ok(Value::String(text.trim().to_string()))
                     } else {
