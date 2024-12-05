@@ -1,34 +1,76 @@
-use crate::error::RuntimeError;
-use crate::interpreter::Interpreter;
+use std::error::Error;
+use std::fmt;
 use std::sync::Arc;
+use std::future::Future;
+use std::pin::Pin;
+use serde::{Serialize, Deserialize};
+
+use crate::interpreter::Interpreter;
 
 #[derive(Clone)]
 pub enum Value {
+    Void,
     Float(f64),
     String(String),
     Boolean(bool),
-    Array(Vec<Value>),
     Object(Vec<(String, Value)>),
-    NativeFunction(Arc<dyn Fn(&mut Interpreter, Vec<Value>) -> Result<Value, RuntimeError> + Send + Sync>),
-    AsyncFn(Arc<dyn Fn(Vec<Value>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value, RuntimeError>> + Send>> + Send + Sync>),
+    Array(Vec<Value>),
+    NativeFunction(Arc<dyn Fn(&mut Interpreter, Vec<Value>) -> Result<Value, Box<dyn Error>> + Send + Sync>),
+    AsyncFn(Arc<dyn Fn(Vec<Value>) -> Pin<Box<dyn Future<Output = Result<Value, Box<dyn Error>>> + Send>> + Send + Sync>),
+    Tensor(Vec<f64>, Vec<usize>),
 }
 
-impl std::fmt::Debug for Value {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Value::Void => write!(f, "void"),
             Value::Float(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
-            Value::Array(arr) => f.debug_list().entries(arr).finish(),
-            Value::Object(obj) => {
-                let mut map = f.debug_map();
-                for (k, v) in obj {
-                    map.entry(&k, &v);
+            Value::Object(fields) => {
+                let mut debug_struct = f.debug_struct("Object");
+                for (name, value) in fields {
+                    debug_struct.field(name, value);
                 }
-                map.finish()
+                debug_struct.finish()
+            },
+            Value::Array(values) => {
+                f.debug_list().entries(values).finish()
             },
             Value::NativeFunction(_) => write!(f, "[native function]"),
             Value::AsyncFn(_) => write!(f, "[async function]"),
+            Value::Tensor(values, shape) => write!(f, "Tensor({:?}, {:?})", values, shape),
+        }
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Void, Value::Void) => true,
+            (Value::Float(a), Value::Float(b)) => a == b,
+            (Value::String(a), Value::String(b)) => a == b,
+            (Value::Boolean(a), Value::Boolean(b)) => a == b,
+            (Value::Array(a), Value::Array(b)) => a == b,
+            (Value::Object(a), Value::Object(b)) => {
+                if a.len() != b.len() {
+                    return false;
+                }
+                for (key, value) in a {
+                    if let Some(other_value) = b.iter().find(|(k, _)| k == key) {
+                        if value != &other_value.1 {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+                true
+            },
+            (Value::Tensor(a_values, a_shape), Value::Tensor(b_values, b_shape)) => {
+                a_values == b_values && a_shape == b_shape
+            },
+            _ => false,
         }
     }
 }
@@ -36,199 +78,222 @@ impl std::fmt::Debug for Value {
 impl Value {
     pub fn get_type(&self) -> &'static str {
         match self {
+            Value::Void => "void",
             Value::Float(_) => "float",
             Value::String(_) => "string",
             Value::Boolean(_) => "boolean",
-            Value::Array(_) => "array",
             Value::Object(_) => "object",
+            Value::Array(_) => "array",
             Value::NativeFunction(_) => "function",
             Value::AsyncFn(_) => "async_function",
+            Value::Tensor(_, _) => "tensor",
+        }
+    }
+
+    pub fn get_confidence(&self) -> Option<f64> {
+        match self {
+            Value::Object(fields) => {
+                fields.iter()
+                    .find(|(name, _)| name == "confidence")
+                    .and_then(|(_, value)| {
+                        if let Value::Float(n) = value {
+                            Some(*n)
+                        } else {
+                            None
+                        }
+                    })
+            }
+            _ => None,
+        }
+    }
+
+    pub fn with_confidence(&self, confidence: f64) -> Result<Value, Box<dyn Error>> {
+        if confidence < 0.0 || confidence > 1.0 {
+            return Err("Confidence must be between 0 and 1".into());
+        }
+
+        match self {
+            Value::Object(fields) => {
+                let mut new_fields = fields.clone();
+                if let Some(pos) = new_fields.iter().position(|(name, _)| name == "confidence") {
+                    new_fields[pos] = ("confidence".to_string(), Value::Float(confidence));
+                } else {
+                    new_fields.push(("confidence".to_string(), Value::Float(confidence)));
+                }
+                Ok(Value::Object(new_fields))
+            }
+            _ => {
+                let mut fields = Vec::new();
+                fields.push(("value".to_string(), self.clone()));
+                fields.push(("confidence".to_string(), Value::Float(confidence)));
+                Ok(Value::Object(fields))
+            }
         }
     }
 
     pub fn to_string(&self) -> String {
         match self {
+            Value::Void => "void".to_string(),
             Value::Float(n) => n.to_string(),
             Value::String(s) => s.clone(),
             Value::Boolean(b) => b.to_string(),
-            Value::Array(arr) => {
-                let elements: Vec<String> = arr.iter()
-                    .map(|v| v.to_string())
-                    .collect();
-                format!("[{}]", elements.join(", "))
-            },
-            Value::Object(obj) => {
-                let fields: Vec<String> = obj.iter()
-                    .map(|(k, v)| format!("{}: {}", k, v.to_string()))
-                    .collect();
-                format!("{{{}}}", fields.join(", "))
-            },
+            Value::Object(fields) => {
+                let mut result = String::from("{");
+                for (i, (name, value)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        result.push_str(", ");
+                    }
+                    result.push_str(&format!("{}: {}", name, value.to_string()));
+                }
+                result.push('}');
+                result
+            }
+            Value::Array(values) => {
+                let mut result = String::from("[");
+                for (i, value) in values.iter().enumerate() {
+                    if i > 0 {
+                        result.push_str(", ");
+                    }
+                    result.push_str(&value.to_string());
+                }
+                result.push(']');
+                result
+            }
             Value::NativeFunction(_) => "[native function]".to_string(),
             Value::AsyncFn(_) => "[async function]".to_string(),
+            Value::Tensor(values, shape) => format!("Tensor({:?}, {:?})", values, shape),
         }
     }
+}
 
-    pub fn add(&self, other: &Value) -> Result<Value, RuntimeError> {
-        match (self, other) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
-            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
-            _ => Err(RuntimeError::TypeError(format!("Cannot add {} and {}", self.get_type(), other.get_type()))),
-        }
-    }
-
-    pub fn subtract(&self, other: &Value) -> Result<Value, RuntimeError> {
-        match (self, other) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
-            _ => Err(RuntimeError::TypeError(format!("Cannot subtract {} from {}", other.get_type(), self.get_type()))),
-        }
-    }
-
-    pub fn multiply(&self, other: &Value) -> Result<Value, RuntimeError> {
-        match (self, other) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
-            _ => Err(RuntimeError::TypeError(format!("Cannot multiply {} and {}", self.get_type(), other.get_type()))),
-        }
-    }
-
-    pub fn divide(&self, other: &Value) -> Result<Value, RuntimeError> {
-        match (self, other) {
-            (Value::Float(a), Value::Float(b)) => {
-                if *b == 0.0 {
-                    Err(RuntimeError::DivisionByZero)
-                } else {
-                    Ok(Value::Float(a / b))
-                }
-            }
-            _ => Err(RuntimeError::TypeError(format!("Cannot divide {} by {}", self.get_type(), other.get_type()))),
-        }
-    }
-
-    pub fn equals(&self, other: &Value) -> Result<Value, RuntimeError> {
-        match (self, other) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Boolean((a - b).abs() < f64::EPSILON)),
-            (Value::String(a), Value::String(b)) => Ok(Value::Boolean(a == b)),
-            (Value::Boolean(a), Value::Boolean(b)) => Ok(Value::Boolean(a == b)),
-            _ => Ok(Value::Boolean(false)),
-        }
-    }
-
-    pub fn not_equals(&self, other: &Value) -> Result<Value, RuntimeError> {
-        self.equals(other).map(|v| match v {
-            Value::Boolean(b) => Value::Boolean(!b),
-            _ => unreachable!(),
-        })
-    }
-
-    pub fn less_than(&self, other: &Value) -> Result<Value, RuntimeError> {
-        match (self, other) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Boolean(a < b)),
-            _ => Err(RuntimeError::TypeError(format!("Cannot compare {} and {}", self.get_type(), other.get_type()))),
-        }
-    }
-
-    pub fn less_than_or_equal(&self, other: &Value) -> Result<Value, RuntimeError> {
-        match (self, other) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Boolean(a <= b)),
-            _ => Err(RuntimeError::TypeError(format!("Cannot compare {} and {}", self.get_type(), other.get_type()))),
-        }
-    }
-
-    pub fn greater_than(&self, other: &Value) -> Result<Value, RuntimeError> {
-        match (self, other) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Boolean(a > b)),
-            _ => Err(RuntimeError::TypeError(format!("Cannot compare {} and {}", self.get_type(), other.get_type()))),
-        }
-    }
-
-    pub fn greater_than_or_equal(&self, other: &Value) -> Result<Value, RuntimeError> {
-        match (self, other) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Boolean(a >= b)),
-            _ => Err(RuntimeError::TypeError(format!("Cannot compare {} and {}", self.get_type(), other.get_type()))),
-        }
-    }
-
-    pub fn and(&self, other: &Value) -> Result<Value, RuntimeError> {
-        match (self, other) {
-            (Value::Boolean(a), Value::Boolean(b)) => Ok(Value::Boolean(*a && *b)),
-            _ => Err(RuntimeError::TypeError(format!("Cannot perform logical AND on {} and {}", self.get_type(), other.get_type()))),
-        }
-    }
-
-    pub fn or(&self, other: &Value) -> Result<Value, RuntimeError> {
-        match (self, other) {
-            (Value::Boolean(a), Value::Boolean(b)) => Ok(Value::Boolean(*a || *b)),
-            _ => Err(RuntimeError::TypeError(format!("Cannot perform logical OR on {} and {}", self.get_type(), other.get_type()))),
-        }
-    }
-
-    pub fn not(&self) -> Result<Value, RuntimeError> {
+impl Serialize for Value {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
         match self {
-            Value::Boolean(b) => Ok(Value::Boolean(!b)),
-            _ => Err(RuntimeError::TypeError(format!("Cannot perform logical NOT on {}", self.get_type()))),
-        }
-    }
-
-    pub fn negate(&self) -> Result<Value, RuntimeError> {
-        match self {
-            Value::Float(n) => Ok(Value::Float(-n)),
-            _ => Err(RuntimeError::TypeError(format!("Cannot negate {}", self.get_type()))),
-        }
-    }
-
-    pub fn get_property(&self, property: &Value) -> Result<Value, RuntimeError> {
-        match (self, property) {
-            (Value::Object(fields), Value::String(prop)) => {
-                for (name, value) in fields {
-                    if name == prop {
-                        return Ok(value.clone());
-                    }
+            Value::Void => serializer.serialize_none(),
+            Value::Float(n) => serializer.serialize_f64(*n),
+            Value::String(s) => serializer.serialize_str(s),
+            Value::Boolean(b) => serializer.serialize_bool(*b),
+            Value::Object(fields) => {
+                use serde::ser::SerializeMap;
+                let mut map = serializer.serialize_map(Some(fields.len()))?;
+                for (key, value) in fields {
+                    map.serialize_entry(key, value)?;
                 }
-                Err(RuntimeError::UndefinedField(format!("Object has no property '{}'", prop)))
+                map.end()
             }
-            _ => Err(RuntimeError::TypeError(format!("Cannot get property of {} with {}", self.get_type(), property.get_type()))),
+            Value::Array(values) => values.serialize(serializer),
+            Value::NativeFunction(_) => serializer.serialize_str("[native function]"),
+            Value::AsyncFn(_) => serializer.serialize_str("[async function]"),
+            Value::Tensor(values, shape) => {
+                use serde::ser::SerializeStruct;
+                let mut s = serializer.serialize_struct("Tensor", 2)?;
+                s.serialize_field("values", values)?;
+                s.serialize_field("shape", shape)?;
+                s.end()
+            }
         }
     }
+}
 
-    pub fn get_index(&self, index: &Value) -> Result<Value, RuntimeError> {
-        match (self, index) {
-            (Value::Array(arr), Value::Float(i)) => {
-                let i = *i as usize;
-                if i < arr.len() {
-                    Ok(arr[i].clone())
-                } else {
-                    Err(RuntimeError::IndexOutOfBounds(i, arr.len()))
+impl<'de> Deserialize<'de> for Value {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{self, Visitor, MapAccess, SeqAccess};
+        use std::fmt;
+
+        struct ValueVisitor;
+
+        impl<'de> Visitor<'de> for ValueVisitor {
+            type Value = Value;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a valid Prism value")
+            }
+
+            fn visit_bool<E>(self, value: bool) -> Result<Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::Boolean(value))
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::Float(value as f64))
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::Float(value as f64))
+            }
+
+            fn visit_f64<E>(self, value: f64) -> Result<Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::Float(value))
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::String(value.to_string()))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::String(value))
+            }
+
+            fn visit_none<E>(self) -> Result<Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::Void)
+            }
+
+            fn visit_some<D>(self, deserializer: D) -> Result<Value, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                Value::deserialize(deserializer)
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut values = Vec::new();
+                while let Some(value) = seq.next_element()? {
+                    values.push(value);
                 }
+                Ok(Value::Array(values))
             }
-            _ => Err(RuntimeError::TypeError(format!("Cannot index {} with {}", self.get_type(), index.get_type()))),
-        }
-    }
 
-    pub fn with_confidence(&self, confidence: &Value) -> Result<Value, RuntimeError> {
-        match confidence {
-            Value::Float(n) if *n >= 0.0 && *n <= 1.0 => {
-                match self {
-                    Value::Object(fields) => {
-                        let mut new_fields = fields.clone();
-                        new_fields.push(("confidence".to_string(), Value::Float(*n)));
-                        Ok(Value::Object(new_fields))
-                    }
-                    _ => {
-                        let mut fields = Vec::new();
-                        fields.push(("value".to_string(), self.clone()));
-                        fields.push(("confidence".to_string(), Value::Float(*n)));
-                        Ok(Value::Object(fields))
-                    }
+            fn visit_map<M>(self, mut access: M) -> Result<Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut fields = Vec::new();
+                while let Some((key, value)) = access.next_entry()? {
+                    fields.push((key, value));
                 }
+                Ok(Value::Object(fields))
             }
-            _ => Err(RuntimeError::TypeError(format!("Confidence must be a float between 0 and 1, got {}", confidence.get_type()))),
         }
-    }
 
-    pub async fn call(&self, interpreter: &mut Interpreter, args: Vec<Value>) -> Result<Value, RuntimeError> {
-        match self {
-            Value::NativeFunction(f) => f(interpreter, args),
-            Value::AsyncFn(f) => f(args).await,
-            _ => Err(RuntimeError::TypeError(format!("Cannot call {}", self.get_type()))),
-        }
+        deserializer.deserialize_any(ValueVisitor)
     }
 } 

@@ -1,4 +1,43 @@
-let symptoms = "severe headache, sensitivity to light, nausea";
-let confidence = llm.validate_symptom(symptoms);
-confidence;
+let symptoms = ["fever", "cough", "fatigue"];
+let diseases = ["flu", "covid", "cold"];
+
+// Validate each symptom
+let validated_symptoms = [];
+for symptom in symptoms {
+    let confidence = medical.validate_symptom(symptom);
+    if confidence > 0.7 {
+        validated_symptoms.push(symptom ~> confidence);
+    }
+}
+
+// Match symptoms against diseases
+let results = [];
+for disease in diseases {
+    let pattern = medical.get_disease_pattern(disease);
+    let match_score = medical.semantic_match(validated_symptoms, pattern);
+    
+    uncertain if (match_score > 0.8) {
+        results.push({
+            "disease": disease,
+            "confidence": match_score,
+            "severity": "high"
+        });
+    } medium {
+        results.push({
+            "disease": disease,
+            "confidence": match_score,
+            "severity": "medium"
+        });
+    } low {
+        results.push({
+            "disease": disease,
+            "confidence": match_score,
+            "severity": "low"
+        });
+    }
+}
+
+// Sort results by confidence
+results.sort((a, b) => b.confidence - a.confidence);
+results
   

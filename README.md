@@ -1,138 +1,157 @@
-# Project Prism
+<div align="center">
+  <h1>🌈 Prism Programming Language</h1>
+  <p><strong>A modern language designed for the AI-first world</strong></p>
+</div>
 
-A programming language designed specifically for LLM interactions and probabilistic computing.
+Prism is a programming language that bridges the gap between traditional software development and AI capabilities. It provides native support for LLM operations while maintaining the robustness and familiarity of traditional programming languages.
 
-## Overview
-
-Prism is a domain-specific language that brings probabilistic computing and LLM interactions into the core language design. It features:
-
-- First-class support for confidence values and uncertainty
-- Built-in context management
-- Native LLM integration with Google's Gemini API
-- Advanced pattern matching with semantic understanding
-- Source verification and hallucination prevention
-
-## Getting Started
-
-### Prerequisites
-
-- Rust (latest stable version)
-- Cargo (comes with Rust)
-- Google Cloud account with Gemini API access
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/prism.git
-cd prism
-```
-
-2. Set up environment:
-```bash
-# Copy example environment file
-cp .env.example .env
-
-# Edit .env and add your Google API key
-# Get your API key from: https://console.cloud.google.com/
-nano .env
-```
-
-3. Build the project:
-```bash
-cd compiler
-cargo build
-```
-
-4. Run an example:
-```bash
-# Basic example
-cargo run examples/basic.prism
-
-# LLM integration example
-cargo run examples/llm.prism
-```
-
-## Language Features
-
-### Confidence Values
 ```prism
-conf x = 0.8  // Declare a confidence value
-x ~> 0.7      // Confidence flow
-```
+import llm from "std/llm"
 
-### Uncertain Control Flow
-```prism
-uncertain if (condition ~> 0.7) {
-    // High confidence path
-} medium {
-    // Medium confidence path
-} low {
-    // Low confidence fallback
+async fn analyze_sentiment(text: string) -> float {
+    let result = await llm.analyze(text, {
+        task: "sentiment",
+        model: "gpt-4"
+    })
+    return result.score
 }
 ```
 
-### Context Management
+## Why Prism?
+
+- **🤖 AI-Native**: First-class support for LLM operations and AI model interactions
+- **🧩 Modular**: Extensible module system for building domain-specific features
+- **🔒 Type-Safe**: Strong type system with inference for reliable code
+- **⚡ Async-First**: Built-in support for modern asynchronous programming
+- **🛠️ Practical**: Familiar syntax for experienced developers, gentle learning curve for newcomers
+
+## Features in Action
+
+### 1. Native LLM Integration
+
 ```prism
-in context Medical {
-    conf diagnosis = 0.8
-    verify against sources ["pubmed"] {
-        conf treatment = 0.7
-    }
+// Chat with AI models as naturally as calling functions
+let response = await llm.chat("Explain quantum computing")
+```
+
+### 2. Type-Safe AI Operations
+
+```prism
+type AnalysisResult {
+    sentiment: float,
+    topics: List<string>,
+    summary: string
+}
+
+async fn analyze_text(input: string) -> AnalysisResult {
+    return await llm.analyze(input)
 }
 ```
 
-### LLM Integration
+### 3. Extensible Module System
 
-#### Semantic Pattern Matching
 ```prism
-conf match = pattern.semantic_match(
-    "The patient shows signs of elevated blood pressure",
-    "The individual's blood pressure readings are above normal"
-)
-```
+// Import only what you need
+import { analyze, classify } from llm
+import { parse_json } from utils
 
-#### Source Verification
-```prism
-verify against sources ["medical_guidelines"] {
-    conf verification = verify.source("medical_guidelines", diagnosis)
+// Create domain-specific functionality
+async fn process_data(data: string) -> json {
+    let result = await analyze(data)
+    return parse_json(result)
 }
 ```
 
-#### Pattern Transformation
-```prism
-let transformed = pattern.transform(
-    "The patient shows signs of elevated blood pressure",
-    "Convert to medical terminology"
-)
+## Quick Start
+
+```bash
+# Install Prism
+cargo install prism-lang
+
+# Create a new project
+prism new my-project
+
+# Run an example
+prism run examples/hello.prism
 ```
 
-## Configuration
+## Architecture
 
-The following environment variables can be set in `.env`:
+```mermaid
+graph TD
+    A[Your Prism Code] --> B[Parser]
+    B --> C[Type Checker]
+    C --> D[Interpreter]
+    D --> E[Module System]
+    E --> F[Standard Library]
+    E --> G[Custom Modules]
+    F --> H[LLM]
+    F --> I[Core]
+    F --> J[Utils]
+    
+    style A fill:#f9f9f9
+    style F fill:#d4f1f4
+    style G fill:#e8f4d4
+```
 
-- `GOOGLE_API_KEY` (required): Your Google API key
-- `GEMINI_MODEL` (optional): Override default model (default: "gemini-pro")
-- `GEMINI_TIMEOUT_SECS` (optional): API timeout in seconds (default: 30)
-- `GEMINI_MAX_RETRIES` (optional): Maximum retry attempts (default: 3)
+## Documentation
 
-## Development Status
+📚 **[Language Guide](docs/guide/README.md)**
+- Start here to learn Prism basics
+- Step-by-step tutorials
+- Best practices
 
-This project is in early development. Current status:
+🧩 **[Module System](docs/modules/README.md)**
+- Understanding Prism's extensibility
+- Creating custom modules
+- Module organization patterns
 
-- [x] Core language design
-- [x] Basic compiler infrastructure
-- [x] Lexer implementation
-- [x] Parser implementation
-- [x] Interpreter
-- [x] Standard library
-- [x] LLM integrations
-- [ ] IDE support
+📖 **[Standard Library](docs/stdlib/README.md)**
+- Built-in modules and functions
+- LLM integration features
+- Utility functions
 
-## Contributing
+🔬 **[Examples](examples/README.md)**
+- Real-world use cases
+- Domain-specific examples
+- Integration patterns
 
-Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+## Example: Traditional vs Prism Approach
+
+Here's how Prism simplifies AI integration compared to traditional approaches:
+
+```mermaid
+graph LR
+    subgraph "Traditional Approach"
+        A1[Setup API Client] --> B1[Handle Auth]
+        B1 --> C1[Parse Request]
+        C1 --> D1[Process Response]
+        D1 --> E1[Error Handling]
+    end
+    
+    subgraph "Prism Approach"
+        A2[Import Module] --> B2[Use Function]
+        B2 --> C2[Get Result]
+    end
+    
+    style A1,B1,C1,D1,E1 fill:#ffcccc
+    style A2,B2,C2 fill:#ccffcc
+```
+
+## Project Status
+
+Prism is under active development with a focus on:
+- Expanding LLM integration capabilities
+- Enhancing the module system
+- Improving developer experience
+- Building community tools and resources
+
+## Community
+
+- 💬 [Discord](https://discord.gg/prism) (Coming soon)
+- 📣 [GitHub Discussions](https://github.com/oneirocom/prism/discussions)
+- 📝 [Contributing Guide](CONTRIBUTING.md)
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
+MIT License - see [LICENSE](LICENSE) for details

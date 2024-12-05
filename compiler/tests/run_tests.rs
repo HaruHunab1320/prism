@@ -1,99 +1,88 @@
-use prism::{Interpreter, Parser, Lexer, Value};
+use std::error::Error;
+use std::time::Instant;
+use colored::*;
+use prism::{Lexer, Parser, Interpreter};
 
-const EPSILON: f64 = 1e-10;
+mod integration_tests;
 
-fn assert_float_eq(a: f64, b: f64) {
-    assert!((a - b).abs() < EPSILON, "Expected {} but got {}", b, a);
-}
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    println!("\n{}", "Running Prism Language Tests".bold().green());
+    println!("{}", "=========================".green());
 
-#[tokio::test]
-async fn test_basic_arithmetic() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        let x = 5.0;
-        let y = 3.0;
-        x + y;
-    "#;
+    let start_time = Instant::now();
+    let mut passed = 0;
+    let mut failed = 0;
 
-    let mut interpreter = Interpreter::new();
-    let tokens = Lexer::new(source).collect::<Vec<_>>();
-    let mut parser = Parser::new(tokens);
-    let statements = parser.parse()?;
-    let mut result = Value::Void;
-    for stmt in statements {
-        result = interpreter.eval_stmt(&stmt)?;
-    }
+    // Run individual feature tests
+    let tests = vec![
+        ("Confidence Flow", integration_tests::test_confidence_flow()),
+        ("Context Operations", integration_tests::test_context_operations()),
+        ("Pattern Matching", integration_tests::test_pattern_matching()),
+        ("Tensor Operations", integration_tests::test_tensor_operations()),
+        ("Semantic Matching", integration_tests::test_semantic_matching()),
+        ("Verification System", integration_tests::test_verification()),
+        ("Uncertain Conditionals", integration_tests::test_uncertain_conditionals()),
+        ("Try-Confidence Blocks", integration_tests::test_try_confidence()),
+        ("Async Operations", integration_tests::test_async_operations()),
+        ("All Features Combined", integration_tests::test_all_features()),
+    ];
 
-    assert_eq!(result, Value::Float(8.0));
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_function_definition() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn add(x, y) {
-            return x + y;
-        }
-        add(2.0, 3.0);
-    "#;
-
-    let mut interpreter = Interpreter::new();
-    let tokens = Lexer::new(source).collect::<Vec<_>>();
-    let mut parser = Parser::new(tokens);
-    let statements = parser.parse()?;
-    let mut result = Value::Void;
-    for stmt in statements {
-        result = interpreter.eval_stmt(&stmt)?;
-    }
-
-    assert_eq!(result, Value::Float(5.0));
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_confidence_flow() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        let x = 0.8;
-        let y = x ~> 0.9;
-        y;
-    "#;
-
-    let mut interpreter = Interpreter::new();
-    let tokens = Lexer::new(source).collect::<Vec<_>>();
-    let mut parser = Parser::new(tokens);
-    let statements = parser.parse()?;
-    let mut result = Value::Void;
-    for stmt in statements {
-        result = interpreter.eval_stmt(&stmt)?;
-    }
-
-    if let Value::Float(n) = result {
-        assert_float_eq(n, 0.72);
-    } else {
-        panic!("Expected float value");
-    }
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_context_block() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        context "validation" {
-            let x = 0.8;
-            verify x > 0.7 {
-                true;
+    for (name, test) in tests {
+        print!("Testing {:<30}", name);
+        match test.await {
+            Ok(_) => {
+                println!("{}", "PASSED".green());
+                passed += 1;
+            }
+            Err(e) => {
+                println!("{}", "FAILED".red());
+                println!("  Error: {}", e.to_string().red());
+                failed += 1;
             }
         }
-    "#;
-
-    let mut interpreter = Interpreter::new();
-    let tokens = Lexer::new(source).collect::<Vec<_>>();
-    let mut parser = Parser::new(tokens);
-    let statements = parser.parse()?;
-    let mut result = Value::Void;
-    for stmt in statements {
-        result = interpreter.eval_stmt(&stmt)?;
     }
 
-    assert!(matches!(result, Value::Boolean(true)));
+    // Print summary
+    let duration = start_time.elapsed();
+    println!("\n{}", "Test Summary".bold());
+    println!("------------");
+    println!("Total Tests: {}", tests.len());
+    println!("Passed:      {}", passed.to_string().green());
+    println!("Failed:      {}", failed.to_string().red());
+    println!("Duration:    {:.2?}", duration);
+
+    if failed > 0 {
+        Err(format!("{} tests failed", failed).into())
+    } else {
+        println!("\n{}", "All tests passed successfully!".bold().green());
+        Ok(())
+    }
+}
+
+// Helper function to run a single test file
+pub async fn run_test_file(source: &str) -> Result<(), Box<dyn Error>> {
+    let mut lexer = Lexer::new(source);
+    let (tokens, starts, ends) = lexer.lex()?;
+    let mut parser = Parser::new(source.to_string(), tokens, starts, ends);
+    let statements = parser.parse()?;
+
+    let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
+    let mut interpreter = Interpreter::new(api_key);
+
+    for stmt in statements {
+        interpreter.eval_stmt(stmt).await?;
+    }
+
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_runner() -> Result<(), Box<dyn Error>> {
+        integration_tests::run_all_tests().await
+    }
 } 

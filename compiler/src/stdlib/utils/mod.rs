@@ -1,90 +1,94 @@
-use crate::error::RuntimeError;
-use crate::interpreter::Interpreter;
-use crate::stdlib::Module;
 use crate::types::Value;
-use std::sync::Arc;
+use crate::interpreter::Interpreter;
+use std::error::Error;
 
-pub fn create_utils_module() -> Module {
-    let mut module = Module::new("utils");
-
-    module.register_function("parse_json", Value::NativeFunction(Arc::new(|_interpreter: &mut Interpreter, args: Vec<Value>| {
-        if args.len() != 1 {
-            return Err(RuntimeError::TypeError("parse_json takes exactly 1 argument".to_string()));
-        }
-
-        let json_str = match &args[0] {
-            Value::String(s) => s,
-            _ => return Err(RuntimeError::TypeError("parse_json requires a string argument".to_string())),
-        };
-
-        fn convert_json(value: serde_json::Value) -> Result<Value, RuntimeError> {
-            match value {
-                serde_json::Value::Null => Ok(Value::String("null".to_string())),
-                serde_json::Value::Bool(b) => Ok(Value::Boolean(b)),
-                serde_json::Value::Number(n) => Ok(Value::Float(n.as_f64().unwrap_or(0.0))),
-                serde_json::Value::String(s) => Ok(Value::String(s)),
-                serde_json::Value::Array(arr) => {
-                    let mut values = Vec::new();
-                    for v in arr {
-                        values.push(convert_json(v)?);
-                    }
-                    Ok(Value::Array(values))
-                }
-                serde_json::Value::Object(obj) => {
-                    let mut fields = Vec::new();
-                    for (k, v) in obj {
-                        fields.push((k, convert_json(v)?));
-                    }
-                    Ok(Value::Object(fields))
-                }
-            }
-        }
-
-        match serde_json::from_str(json_str) {
-            Ok(json) => convert_json(json),
-            Err(e) => Err(RuntimeError::TypeError(format!("Invalid JSON: {}", e))),
-        }
-    })));
-
-    module.register_function("split", Value::NativeFunction(Arc::new(|_interpreter: &mut Interpreter, args: Vec<Value>| {
+pub fn register_utils_functions(interpreter: &mut Interpreter) {
+    interpreter.register_native_function("split", |_, args| {
         if args.len() != 2 {
-            return Err(RuntimeError::TypeError("split takes exactly 2 arguments".to_string()));
+            return Err("split() takes exactly two arguments".into());
         }
 
-        let (text, separator) = match (&args[0], &args[1]) {
-            (Value::String(t), Value::String(s)) => (t, s),
-            _ => return Err(RuntimeError::TypeError("split requires two string arguments".to_string())),
-        };
+        match (&args[0], &args[1]) {
+            (Value::String(text), Value::String(sep)) => {
+                let parts: Vec<Value> = text.split(sep.as_str())
+                    .map(|s| Value::String(s.to_string()))
+                    .collect();
+                Ok(Value::Array(parts))
+            },
+            _ => Err("split() requires string arguments".into()),
+        }
+    });
 
-        let parts: Vec<Value> = text.split(separator)
-            .map(|s| Value::String(s.trim().to_string()))
-            .collect();
-
-        Ok(Value::Array(parts))
-    })));
-
-    module.register_function("join", Value::NativeFunction(Arc::new(|_interpreter: &mut Interpreter, args: Vec<Value>| {
+    interpreter.register_native_function("join", |_, args| {
         if args.len() != 2 {
-            return Err(RuntimeError::TypeError("join takes exactly 2 arguments".to_string()));
+            return Err("join() takes exactly two arguments".into());
         }
 
-        let (array, separator) = match (&args[0], &args[1]) {
-            (Value::Array(arr), Value::String(sep)) => (arr, sep),
-            _ => return Err(RuntimeError::TypeError("join requires an array and a string separator".to_string())),
-        };
-
-        let strings: Result<Vec<String>, RuntimeError> = array.iter()
-            .map(|v| match v {
-                Value::String(s) => Ok(s.clone()),
-                _ => Err(RuntimeError::TypeError("join array must contain only strings".to_string())),
-            })
-            .collect();
-
-        match strings {
-            Ok(parts) => Ok(Value::String(parts.join(separator))),
-            Err(e) => Err(e),
+        match (&args[0], &args[1]) {
+            (Value::Array(arr), Value::String(sep)) => {
+                let strings: Result<Vec<String>, Box<dyn Error>> = arr.iter()
+                    .map(|v| match v {
+                        Value::String(s) => Ok(s.clone()),
+                        _ => Err("join() array elements must be strings".into()),
+                    })
+                    .collect();
+                Ok(Value::String(strings?.join(sep.as_str())))
+            },
+            _ => Err("join() requires array and string arguments".into()),
         }
-    })));
+    });
 
-    module
+    interpreter.register_native_function("map", |interpreter, args| {
+        if args.len() != 2 {
+            return Err("map() takes exactly two arguments".into());
+        }
+
+        match (&args[0], &args[1]) {
+            (Value::Array(arr), Value::NativeFunction(f)) => {
+                let mut results = Vec::new();
+                for value in arr {
+                    results.push(f(interpreter, vec![value.clone()])?);
+                }
+                Ok(Value::Array(results))
+            },
+            _ => Err("map() requires array and function arguments".into()),
+        }
+    });
+
+    interpreter.register_native_function("filter", |interpreter, args| {
+        if args.len() != 2 {
+            return Err("filter() takes exactly two arguments".into());
+        }
+
+        match (&args[0], &args[1]) {
+            (Value::Array(arr), Value::NativeFunction(f)) => {
+                let mut results = Vec::new();
+                for value in arr {
+                    let predicate = f(interpreter, vec![value.clone()])?;
+                    if let Value::Boolean(true) = predicate {
+                        results.push(value.clone());
+                    }
+                }
+                Ok(Value::Array(results))
+            },
+            _ => Err("filter() requires array and function arguments".into()),
+        }
+    });
+
+    interpreter.register_native_function("reduce", |interpreter, args| {
+        if args.len() != 3 {
+            return Err("reduce() takes exactly three arguments".into());
+        }
+
+        match (&args[0], &args[1], &args[2]) {
+            (Value::Array(arr), Value::NativeFunction(f), initial) => {
+                let mut acc = initial.clone();
+                for value in arr {
+                    acc = f(interpreter, vec![acc, value.clone()])?;
+                }
+                Ok(acc)
+            },
+            _ => Err("reduce() requires array, function, and initial value arguments".into()),
+        }
+    });
 } 

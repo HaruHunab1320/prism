@@ -1,0 +1,101 @@
+// Import required modules
+import { validate_symptom, semantic_match, get_disease_pattern } from medical;
+import { split, join } from utils;
+import { complete_with_config } from llm;
+
+// Define a medical context with base confidence
+context medical_analysis {
+    let base_confidence ~ 0.8;  // Set base confidence for this context
+    let symptoms = ["fever", "cough", "fatigue"];
+    let diseases = ["flu", "covid", "cold"];
+    let results = [];
+
+    // Process each symptom with confidence flow
+    for (let i = 0; i < symptoms.len(); i = i + 1) {
+        let symptom = symptoms[i];
+        
+        // Verify symptom against medical sources
+        verify against ["medical_database", "symptom_checker"] {
+            let validated = medical.validate_symptom(symptom) ~> base_confidence;
+            
+            uncertain if (validated > 0.8) {
+                // High confidence path
+                let matches = [];
+                for (let j = 0; j < diseases.len(); j = j + 1) {
+                    let disease = diseases[j];
+                    
+                    // Use context-aware matching
+                    let match in "disease_context" = medical.semantic_match(symptom, disease);
+                    let pattern = medical.get_disease_pattern(disease);
+                    
+                    matches.push({
+                        disease: disease,
+                        confidence: match ~> 0.9,  // High confidence in disease match
+                        typical_symptoms: pattern
+                    });
+                }
+                
+                results.push({
+                    symptom: symptom,
+                    confidence: validated,
+                    matches: matches,
+                    certainty: "high"
+                });
+            } medium {
+                // Medium confidence path (0.5 - 0.8)
+                let matches = [];
+                for (let j = 0; j < diseases.len(); j = j + 1) {
+                    let disease = diseases[j];
+                    let match = medical.semantic_match(symptom, disease) ~> 0.6;  // Reduced confidence
+                    
+                    matches.push({
+                        disease: disease,
+                        confidence: match,
+                        needs_verification: true
+                    });
+                }
+                
+                results.push({
+                    symptom: symptom,
+                    confidence: validated,
+                    matches: matches,
+                    certainty: "medium"
+                });
+            } low {
+                // Low confidence path (< 0.5)
+                results.push({
+                    symptom: symptom,
+                    confidence: validated,
+                    needs_review: true,
+                    certainty: "low"
+                });
+            }
+        }
+    }
+
+    // Get additional context from LLM with confidence weighting
+    let config = {
+        temperature: 0.7,
+        max_tokens: 150
+    };
+
+    verify against ["medical_literature", "case_studies"] {
+        let analysis = llm.complete_with_config(
+            `Analyze these medical results with confidence levels: ${results.to_string()}
+             Provide insights about the symptom-disease relationships.`,
+            config
+        ) ~> 0.7;  // Apply confidence to LLM analysis
+
+        // Return comprehensive results with confidence levels
+        {
+            results: results,
+            analysis: analysis,
+            metadata: {
+                total_symptoms: symptoms.len(),
+                total_diseases: diseases.len(),
+                confidence_threshold: base_confidence,
+                timestamp: utils.now()
+            }
+        }
+    }
+} 

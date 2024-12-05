@@ -3,27 +3,6 @@ name = "prism"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
-logos = "0.12.1"
-thiserror = "1.0.40"
-tokio = { version = "1.28.2", features = ["full"] }
-serde = { version = "1.0.163", features = ["derive"] }
-serde_json = "1.0.96"
-google-generative-ai-rs = "0.3.2"
-futures = "0.3"
-dotenv = "0.15.0"
-colored = "2.0"
-miette = { version = "5.5", features = ["fancy"] }
-reqwest = { version = "0.11", features = ["json"] }
-
-[[example]]
-name = "medical_diagnosis"
-path = "examples/medical_diagnosis.rs"
-
-[[example]]
-name = "comparison"
-path = "examples/comparison/run_comparison.rs"
-
 [lib]
 name = "prism"
 path = "src/lib.rs"
@@ -31,4 +10,34 @@ path = "src/lib.rs"
 [[bin]]
 name = "prism"
 path = "src/main.rs"
+required-features = ["native"]
+
+[dependencies]
+logos = "0.12"
+thiserror = "1.0"
+tokio = { version = "1.0", features = ["full"], optional = true }
+reqwest = { version = "0.11", features = ["json"], optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Request", "RequestInit", "RequestMode", "Response"] }
+serde-wasm-bindgen = "0.4"
+dotenv = { version = "0.15", optional = true }
+colored = { version = "2.0", optional = true }
+
+[features]
+default = ["native"]
+native = ["tokio", "reqwest", "dotenv", "colored"]
+wasm = []
+
+[[example]]
+name = "comparison"
+path = "examples/comparison/run_comparison.rs"
+required-features = ["native"]
+
+[[example]]
+name = "medical_diagnosis"
+path = "examples/medical_diagnosis.rs"
+required-features = ["native"]
  

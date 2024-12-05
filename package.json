@@ -1,0 +1,14 @@
+{
+  "name": "prism-workspace",
+  "private": true,
+  "scripts": {
+    "test:rust": "cd compiler && cargo test",
+    "test:wasm": "cd compiler && wasm-pack test --chrome",
+    "test:ts": "cd prism-ts && npm test",
+    "test": "npm run test:rust && npm run test:wasm && npm run test:ts",
+    "build": "cd compiler && cargo build && cd ../prism-ts && npm run build"
+  },
+  "workspaces": [
+    "prism-ts"
+  ]
+} 

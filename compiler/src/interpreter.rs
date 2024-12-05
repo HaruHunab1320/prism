@@ -1,349 +1,259 @@
-use crate::ast::{Expr, Stmt};
-use crate::error::RuntimeError;
-use crate::types::Value;
-use crate::stdlib::Module;
-use std::collections::HashMap;
+use std::error::Error;
 use std::sync::Arc;
 use std::future::Future;
 use std::pin::Pin;
 
+use crate::ast::{Expr, Stmt};
+use crate::context::ContextManager;
+use crate::environment::Environment;
+use crate::lexer::Lexer;
+use crate::llm::LLMClient;
+use crate::parser::Parser;
+use crate::types::Value;
+
 pub struct Interpreter {
-    environment: HashMap<String, Value>,
-    pub output: String,
+    env: Environment,
+    llm_client: LLMClient,
+    context_manager: ContextManager,
 }
 
 impl Interpreter {
-    pub fn new() -> Self {
+    pub fn new(api_key: String) -> Self {
         Self {
-            environment: HashMap::new(),
-            output: String::new(),
+            env: Environment::new(),
+            llm_client: LLMClient::new(api_key),
+            context_manager: ContextManager::new(0.8),
         }
     }
 
-    pub fn register_module(&mut self, path: &[&str], module: Module) -> Result<(), RuntimeError> {
-        let module_name = path.last().unwrap_or(&"");
-        let mut module_obj = Vec::new();
-        for (name, value) in module.functions {
-            module_obj.push((name.clone(), value.clone()));
+    pub async fn eval(&mut self, source: String) -> Result<Value, Box<dyn Error>> {
+        let mut lexer = Lexer::new(&source);
+        let (tokens, starts, ends) = lexer.lex()?;
+        let mut parser = Parser::new(source, tokens, starts, ends);
+        let statements = parser.parse()?;
+        
+        let mut last_value = Value::Void;
+        for stmt in statements {
+            last_value = self.eval_stmt_boxed(stmt).await?;
         }
-        self.environment.insert(module_name.to_string(), Value::Object(module_obj));
-        Ok(())
+        Ok(last_value)
     }
 
-    pub fn interpret<'a>(&'a mut self, statements: Vec<Arc<Stmt>>) -> Pin<Box<dyn Future<Output = Result<Value, RuntimeError>> + 'a>> {
-        Box::pin(async move {
-            let mut last_value = Value::Object(vec![]);
-            for statement in statements {
-                last_value = self.execute(statement).await?;
-            }
-            Ok(last_value)
-        })
+    pub fn register_native_function<F>(&mut self, name: &str, f: F)
+    where
+        F: Fn(&mut Interpreter, Vec<Value>) -> Result<Value, Box<dyn Error>> + Send + Sync + 'static,
+    {
+        self.env.define(name, Value::NativeFunction(Arc::new(f)));
     }
 
-    fn execute<'a>(&'a mut self, statement: Arc<Stmt>) -> Pin<Box<dyn Future<Output = Result<Value, RuntimeError>> + 'a>> {
+    pub async fn eval_stmt(&mut self, stmt: Stmt) -> Result<Value, Box<dyn Error>> {
+        self.eval_stmt_boxed(stmt).await
+    }
+
+    pub async fn eval_expr(&mut self, expr: Expr) -> Result<Value, Box<dyn Error>> {
+        self.eval_expr_boxed(expr).await
+    }
+
+    fn eval_stmt_boxed(&mut self, stmt: Stmt) -> Pin<Box<dyn Future<Output = Result<Value, Box<dyn Error>>> + '_>> {
         Box::pin(async move {
-            match &*statement {
-                Stmt::Expression(expr) => self.evaluate(expr.clone()).await,
-                Stmt::Let { name, initializer } => {
-                    let value = self.evaluate(initializer.clone()).await?;
-                    self.environment.insert(name.clone(), value.clone());
-                    Ok(value)
-                }
-                Stmt::Block(statements) => {
-                    let mut last_value = Value::Object(vec![]);
-                    for stmt in statements {
-                        last_value = self.execute(stmt.clone()).await?;
-                    }
-                    Ok(last_value)
-                }
-                Stmt::If { condition, then_branch, else_branch } => {
-                    let condition_value = self.evaluate(condition.clone()).await?;
-                    if self.is_truthy(&condition_value) {
-                        self.execute(then_branch.clone()).await
-                    } else if let Some(else_branch) = else_branch {
-                        self.execute(else_branch.clone()).await
-                    } else {
-                        Ok(Value::Object(vec![]))
-                    }
-                }
-                Stmt::While { condition, body } => {
-                    let mut last_value = Value::Object(vec![]);
-                    loop {
-                        let condition_value = self.evaluate(condition.clone()).await?;
-                        if !self.is_truthy(&condition_value) {
-                            break;
-                        }
-                        last_value = self.execute(body.clone()).await?;
-                    }
-                    Ok(last_value)
-                }
-                Stmt::Function { name, params, body } => {
-                    let function = Value::Function {
-                        name: name.clone(),
-                        params: params.clone(),
-                        body: body.clone(),
-                        closure: self.environment.clone(),
+            match stmt {
+                Stmt::Expression(expr) => self.eval_expr_boxed(expr).await,
+                Stmt::Let(name, initializer) => {
+                    let value = match initializer {
+                        Some(expr) => self.eval_expr_boxed(expr).await?,
+                        None => Value::Void,
                     };
-                    self.environment.insert(name.clone(), function.clone());
-                    Ok(function)
-                }
-                Stmt::Return(value) => {
-                    let value = self.evaluate(value.clone()).await?;
+                    self.env.define(&name, value.clone());
                     Ok(value)
-                }
-                Stmt::Break => Err(RuntimeError::Break),
-                Stmt::Continue => Err(RuntimeError::Continue),
-                Stmt::TryCatch { try_block, catch_variable, catch_block } => {
-                    match self.execute(try_block.clone()).await {
-                        Ok(value) => Ok(value),
-                        Err(error) => {
-                            let error_value = Value::String(error.to_string());
-                            self.environment.insert(catch_variable.clone(), error_value);
-                            self.execute(catch_block.clone()).await
-                        }
+                },
+                Stmt::Block(statements) => {
+                    let mut result = Value::Void;
+                    for stmt in statements {
+                        result = self.eval_stmt_boxed(stmt).await?;
                     }
-                }
-                Stmt::Throw(expr) => {
-                    let value = self.evaluate(expr.clone()).await?;
-                    Err(RuntimeError::UserError(value.to_string()))
-                }
+                    Ok(result)
+                },
+                Stmt::Context(name, body) => {
+                    let old_context = self.env.get_current_context().cloned();
+                    self.env.set_context(Some(name));
+                    let result = self.eval_stmt_boxed(*body).await;
+                    self.env.set_context(old_context);
+                    result
+                },
+                Stmt::Verify(_sources, body) => {
+                    let old_threshold = self.context_manager.get_threshold();
+                    self.context_manager.set_threshold(0.9);
+                    let result = self.eval_stmt_boxed(*body).await;
+                    self.context_manager.set_threshold(old_threshold);
+                    result
+                },
+                Stmt::UncertainIf(condition, then_branch, medium_branch, else_branch) => {
+                    let cond_value = self.eval_expr_boxed(condition).await?;
+                    let confidence = match &cond_value {
+                        Value::Float(n) => *n,
+                        _ => return Err("Condition must evaluate to a confidence value".into()),
+                    };
+
+                    if confidence > 0.8 {
+                        self.eval_stmt_boxed(*then_branch).await
+                    } else if confidence > 0.5 && medium_branch.is_some() {
+                        self.eval_stmt_boxed(*medium_branch.unwrap()).await
+                    } else if else_branch.is_some() {
+                        self.eval_stmt_boxed(*else_branch.unwrap()).await
+                    } else {
+                        Ok(Value::Void)
+                    }
+                },
+                Stmt::TryConfidence { body, below_threshold, uncertain, threshold } => {
+                    let result = self.eval_stmt_boxed(*body).await;
+                    match result {
+                        Ok(value) => {
+                            let confidence = value.get_confidence().unwrap_or(1.0);
+                            if confidence < threshold {
+                                self.eval_stmt_boxed(*below_threshold).await
+                            } else {
+                                Ok(value)
+                            }
+                        }
+                        Err(_) => self.eval_stmt_boxed(*uncertain).await,
+                    }
+                },
+                _ => Ok(Value::Void),
             }
         })
     }
 
-    fn evaluate<'a>(&'a mut self, expr: Arc<Expr>) -> Pin<Box<dyn Future<Output = Result<Value, RuntimeError>> + 'a>> {
+    fn eval_expr_boxed(&mut self, expr: Expr) -> Pin<Box<dyn Future<Output = Result<Value, Box<dyn Error>>> + '_>> {
         Box::pin(async move {
-            match &*expr {
-                Expr::Float(n) => Ok(Value::Float(*n)),
-                Expr::String(s) => Ok(Value::String(s.clone())),
-                Expr::Boolean(b) => Ok(Value::Boolean(*b)),
-                Expr::Identifier(name) => {
-                    if let Some(value) = self.environment.get(name) {
-                        Ok(value.clone())
-                    } else {
-                        Err(RuntimeError::UndefinedVariable(name.clone()))
-                    }
-                }
-                Expr::Array(elements) => {
-                    let mut values = Vec::new();
-                    for element in elements {
-                        values.push(self.evaluate(element.clone()).await?);
-                    }
-                    Ok(Value::Array(values))
-                }
-                Expr::Object(fields) => {
-                    let mut values = Vec::new();
-                    for (name, value) in fields {
-                        values.push((name.clone(), self.evaluate(value.clone()).await?));
-                    }
-                    Ok(Value::Object(values))
-                }
-                Expr::Binary { left, operator, right } => {
-                    match operator.as_str() {
-                        "=" => {
-                            let right_val = self.evaluate(right.clone()).await?;
-                            match &**left {
-                                Expr::Identifier(name) => {
-                                    self.environment.insert(name.clone(), right_val.clone());
-                                    Ok(right_val)
-                                }
-                                _ => Err(RuntimeError::TypeError("Invalid assignment target".to_string())),
-                            }
-                        }
-                        "_" => {
-                            let module_name = match &**left {
-                                Expr::Identifier(name) => name.clone(),
-                                _ => return Err(RuntimeError::TypeError("Expected module name".to_string())),
-                            };
-                            let fn_name = match &**right {
-                                Expr::Identifier(name) => name.clone(),
-                                _ => return Err(RuntimeError::TypeError("Expected function name".to_string())),
-                            };
-                            
-                            if let Some(Value::Object(module_fns)) = self.environment.get(&module_name) {
-                                for (name, value) in module_fns {
-                                    if name == &fn_name {
-                                        return Ok(value.clone());
-                                    }
-                                }
-                                Err(RuntimeError::UndefinedVariable(format!("Function '{}' not found in module '{}'", fn_name, module_name)))
+            match expr {
+                Expr::Literal(value) => Ok(value),
+                Expr::Variable(name) => {
+                    self.env.get(&name).cloned().ok_or_else(|| format!("Undefined variable '{}'", name).into())
+                },
+                Expr::Binary(left, operator, right) => {
+                    let left = self.eval_expr_boxed(*left).await?;
+                    let right = self.eval_expr_boxed(*right).await?;
+                    let left_clone = left.clone();
+                    let right_clone = right.clone();
+                    match (left, operator.as_str(), right) {
+                        (Value::Float(l), "+", Value::Float(r)) => Ok(Value::Float(l + r)),
+                        (Value::Float(l), "-", Value::Float(r)) => Ok(Value::Float(l - r)),
+                        (Value::Float(l), "*", Value::Float(r)) => Ok(Value::Float(l * r)),
+                        (Value::Float(l), "/", Value::Float(r)) => {
+                            if r == 0.0 {
+                                Err("Division by zero".into())
                             } else {
-                                Err(RuntimeError::UndefinedVariable(format!("Module '{}' not found", module_name)))
+                                Ok(Value::Float(l / r))
                             }
-                        }
-                        _ => {
-                            let left = self.evaluate(left.clone()).await?;
-                            let right = self.evaluate(right.clone()).await?;
-                            match operator.as_str() {
-                                "+" => self.add(left, right),
-                                "-" => self.subtract(left, right),
-                                "*" => self.multiply(left, right),
-                                "/" => self.divide(left, right),
-                                "==" => Ok(Value::Boolean(left == right)),
-                                "!=" => Ok(Value::Boolean(left != right)),
-                                "<" => self.less_than(left, right),
-                                "<=" => self.less_equal(left, right),
-                                ">" => self.greater_than(left, right),
-                                ">=" => self.greater_equal(left, right),
-                                "." => {
-                                    if let Value::Object(fields) = left {
-                                        if let Value::String(field_name) = right {
-                                            for (name, value) in fields {
-                                                if name == field_name {
-                                                    return Ok(value);
-                                                }
-                                            }
-                                            Err(RuntimeError::TypeError(format!("Object has no field '{}'", field_name)))
-                                        } else {
-                                            Err(RuntimeError::TypeError("Expected string as field name".to_string()))
-                                        }
-                                    } else {
-                                        Err(RuntimeError::TypeError("Expected object".to_string()))
-                                    }
-                                }
-                                _ => Err(RuntimeError::TypeError(format!("Unknown operator '{}'", operator))),
-                            }
-                        }
-                    }
-                }
-                Expr::Unary { operator, operand } => {
-                    let value = self.evaluate(operand.clone()).await?;
-                    match operator.as_str() {
-                        "-" => match value {
-                            Value::Float(n) => Ok(Value::Float(-n)),
-                            _ => Err(RuntimeError::TypeError("Expected number".to_string())),
                         },
-                        "!" => Ok(Value::Boolean(!self.is_truthy(&value))),
-                        _ => Err(RuntimeError::TypeError(format!("Unknown operator '{}'", operator))),
+                        (Value::Float(l), ">", Value::Float(r)) => Ok(Value::Boolean(l > r)),
+                        (Value::Float(l), ">=", Value::Float(r)) => Ok(Value::Boolean(l >= r)),
+                        (Value::Float(l), "<", Value::Float(r)) => Ok(Value::Boolean(l < r)),
+                        (Value::Float(l), "<=", Value::Float(r)) => Ok(Value::Boolean(l <= r)),
+                        (Value::Float(l), "==", Value::Float(r)) => Ok(Value::Boolean(l == r)),
+                        (Value::Float(l), "!=", Value::Float(r)) => Ok(Value::Boolean(l != r)),
+                        _ => Err(format!("Invalid binary operation: {:?} {} {:?}", left_clone, operator, right_clone).into()),
                     }
-                }
-                Expr::Call { function, arguments } => {
-                    let callee = self.evaluate(function.clone()).await?;
+                },
+                Expr::Unary(operator, expr) => {
+                    let value = self.eval_expr_boxed(*expr).await?;
+                    let value_clone = value.clone();
+                    match (operator.as_str(), value) {
+                        ("-", Value::Float(n)) => Ok(Value::Float(-n)),
+                        ("!", Value::Boolean(b)) => Ok(Value::Boolean(!b)),
+                        _ => Err(format!("Invalid unary operation: {} {:?}", operator, value_clone).into()),
+                    }
+                },
+                Expr::Grouping(expr) => self.eval_expr_boxed(*expr).await,
+                Expr::Call(callee, arguments) => {
+                    let callee = self.eval_expr_boxed(*callee).await?;
                     let mut args = Vec::new();
                     for arg in arguments {
-                        args.push(self.evaluate(arg.clone()).await?);
+                        args.push(self.eval_expr_boxed(arg).await?);
                     }
-                    self.call(callee, args).await
-                }
-                Expr::Index { array, index } => {
-                    let array = self.evaluate(array.clone()).await?;
-                    let index = self.evaluate(index.clone()).await?;
-                    match (array, index) {
-                        (Value::Array(elements), Value::Float(i)) => {
-                            let i = i as usize;
-                            if i < elements.len() {
-                                Ok(elements[i].clone())
-                            } else {
-                                Err(RuntimeError::TypeError("Index out of bounds".to_string()))
+                    match callee {
+                        Value::NativeFunction(f) => f(self, args),
+                        Value::AsyncFn(f) => f(args).await,
+                        _ => Err("Can only call functions".into()),
+                    }
+                },
+                Expr::Get(object, name) => {
+                    let object = self.eval_expr_boxed(*object).await?;
+                    match object {
+                        Value::Tensor(values, shape) => {
+                            match name.as_str() {
+                                "cosine_similarity" => Ok(Value::NativeFunction(Arc::new(move |_: &mut Interpreter, args: Vec<Value>| {
+                                    if args.len() != 1 {
+                                        return Err("cosine_similarity takes exactly one argument".into());
+                                    }
+                                    match &args[0] {
+                                        Value::Tensor(other_values, other_shape) if shape == *other_shape => {
+                                            let dot_product: f64 = values.iter().zip(other_values.iter()).map(|(a, b)| a * b).sum();
+                                            let norm1: f64 = values.iter().map(|x| x * x).sum::<f64>().sqrt();
+                                            let norm2: f64 = other_values.iter().map(|x| x * x).sum::<f64>().sqrt();
+                                            
+                                            if norm1 == 0.0 || norm2 == 0.0 {
+                                                Ok(Value::Float(0.0))
+                                            } else {
+                                                Ok(Value::Float(dot_product / (norm1 * norm2)))
+                                            }
+                                        },
+                                        _ => Err("Cosine similarity requires tensors of same shape".into()),
+                                    }
+                                }))),
+                                _ => Err(format!("No such method '{}' on tensor", name).into()),
                             }
+                        },
+                        _ => Err(format!("Cannot get property '{}' of {:?}", name, object).into()),
+                    }
+                },
+                Expr::ConfidenceFlow(expr, confidence) => {
+                    let value = self.eval_expr_boxed(*expr).await?;
+                    let conf = self.eval_expr_boxed(*confidence).await?;
+                    match conf {
+                        Value::Float(n) if n >= 0.0 && n <= 1.0 => value.with_confidence(n),
+                        _ => Err("Confidence must be a float between 0 and 1".into()),
+                    }
+                },
+                Expr::SemanticMatch(left, right) => {
+                    let left = self.eval_expr_boxed(*left).await?;
+                    let right = self.eval_expr_boxed(*right).await?;
+                    match (left, right) {
+                        (Value::String(pattern), Value::String(text)) => {
+                            let confidence = self.llm_client.semantic_match(&text, &pattern).await?;
+                            Ok(Value::Float(confidence))
+                        },
+                        _ => Err("Semantic match requires string operands".into()),
+                    }
+                },
+                Expr::Tensor { values, shape } => {
+                    let mut tensor_values = Vec::new();
+                    for value in values.iter() {
+                        let val = self.eval_expr_boxed(value.clone()).await?;
+                        match val {
+                            Value::Float(n) => tensor_values.push(n),
+                            _ => return Err("Tensor values must be floats".into()),
                         }
-                        _ => Err(RuntimeError::TypeError("Invalid index operation".to_string())),
                     }
-                }
+
+                    let tensor = match shape {
+                        Some(dims) => {
+                            let total_size: usize = dims.iter().product();
+                            if total_size != tensor_values.len() {
+                                return Err("Tensor shape does not match number of values".into());
+                            }
+                            Value::Tensor(tensor_values, dims)
+                        },
+                        None => {
+                            let len = tensor_values.len();
+                            Value::Tensor(tensor_values, vec![len])
+                        }
+                    };
+
+                    Ok(tensor)
+                },
+                _ => Ok(Value::Void),
             }
         })
-    }
-
-    fn call<'a>(&'a mut self, callee: Value, arguments: Vec<Value>) -> Pin<Box<dyn Future<Output = Result<Value, RuntimeError>> + 'a>> {
-        Box::pin(async move {
-            match callee {
-                Value::Function { params, body, closure, .. } => {
-                    if params.len() != arguments.len() {
-                        return Err(RuntimeError::TypeError(format!(
-                            "Expected {} arguments but got {}",
-                            params.len(),
-                            arguments.len()
-                        )));
-                    }
-                    let old_env = self.environment.clone();
-                    self.environment = closure;
-                    for (param, arg) in params.iter().zip(arguments) {
-                        self.environment.insert(param.clone(), arg);
-                    }
-                    let result = self.execute(body).await;
-                    self.environment = old_env;
-                    result
-                }
-                Value::NativeFunction(f) => f(self, arguments),
-                Value::AsyncFn(f) => f(arguments).await,
-                _ => Err(RuntimeError::TypeError("Can only call functions".to_string())),
-            }
-        })
-    }
-
-    fn is_truthy(&self, value: &Value) -> bool {
-        match value {
-            Value::Boolean(b) => *b,
-            Value::Float(n) => *n != 0.0,
-            Value::String(s) => !s.is_empty(),
-            Value::Array(elements) => !elements.is_empty(),
-            Value::Object(fields) => !fields.is_empty(),
-            Value::Function { .. } => true,
-            Value::NativeFunction(_) => true,
-            Value::AsyncFn(_) => true,
-        }
-    }
-
-    fn add(&self, left: Value, right: Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
-            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
-            _ => Err(RuntimeError::TypeError("Cannot add these types".to_string())),
-        }
-    }
-
-    fn subtract(&self, left: Value, right: Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
-            _ => Err(RuntimeError::TypeError("Cannot subtract these types".to_string())),
-        }
-    }
-
-    fn multiply(&self, left: Value, right: Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
-            _ => Err(RuntimeError::TypeError("Cannot multiply these types".to_string())),
-        }
-    }
-
-    fn divide(&self, left: Value, right: Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Float(a), Value::Float(b)) => {
-                if b == 0.0 {
-                    Err(RuntimeError::DivisionByZero)
-                } else {
-                    Ok(Value::Float(a / b))
-                }
-            }
-            _ => Err(RuntimeError::TypeError("Cannot divide these types".to_string())),
-        }
-    }
-
-    fn less_than(&self, left: Value, right: Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Boolean(a < b)),
-            _ => Err(RuntimeError::TypeError("Cannot compare these types".to_string())),
-        }
-    }
-
-    fn less_equal(&self, left: Value, right: Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Boolean(a <= b)),
-            _ => Err(RuntimeError::TypeError("Cannot compare these types".to_string())),
-        }
-    }
-
-    fn greater_than(&self, left: Value, right: Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Boolean(a > b)),
-            _ => Err(RuntimeError::TypeError("Cannot compare these types".to_string())),
-        }
-    }
-
-    fn greater_equal(&self, left: Value, right: Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Boolean(a >= b)),
-            _ => Err(RuntimeError::TypeError("Cannot compare these types".to_string())),
-        }
     }
 }

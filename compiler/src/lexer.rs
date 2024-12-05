@@ -1,49 +1,118 @@
 use logos::Logos;
-use std::fmt;
 
-#[derive(Logos, Debug, Clone, PartialEq)]
+#[derive(Logos, Debug, PartialEq, Clone)]
 pub enum Token {
-    #[token("fn")]
-    Function,
+    #[regex(r"[ \t\n\f]+", logos::skip)]
+    #[error]
+    Error,
 
-    #[token("let")]
-    Let,
+    #[regex(r"[0-9]+(\.[0-9]+)?")]
+    Number,
 
-    #[token("if")]
-    If,
+    #[regex(r#""[^"]*""#)]
+    String,
 
-    #[token("else")]
-    Else,
+    #[regex(r"true|false")]
+    Boolean,
 
-    #[token("while")]
-    While,
+    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*")]
+    Identifier,
 
-    #[token("for")]
-    For,
+    #[token("tensor")]
+    Tensor,
 
-    #[token("break")]
-    Break,
+    #[token("~>")]
+    ConfidenceFlow,
 
-    #[token("continue")]
-    Continue,
+    #[token("~")]
+    ConfidenceAssign,
 
-    #[token("return")]
-    Return,
+    #[token("~=")]
+    SemanticMatch,
 
-    #[token("try")]
-    Try,
+    #[token("in")]
+    In,
 
-    #[token("catch")]
-    Catch,
-
-    #[token("throw")]
-    Throw,
+    #[token("verify")]
+    Verify,
 
     #[token("context")]
     Context,
 
-    #[token("verify")]
-    Verify,
+    #[token("transition")]
+    Transition,
+
+    #[token("to")]
+    To,
+
+    #[token("with")]
+    With,
+
+    #[token("match")]
+    Match,
+
+    #[token("=>")]
+    Arrow,
+
+    #[token("against")]
+    Against,
+
+    #[token("sources")]
+    Sources,
+
+    #[token("uncertain")]
+    Uncertain,
+
+    #[token("medium")]
+    Medium,
+
+    #[token("low")]
+    Low,
+
+    #[token("try")]
+    Try,
+
+    #[token("confidence")]
+    Confidence,
+
+    #[token("below")]
+    Below,
+
+    #[token("threshold")]
+    Threshold,
+
+    #[token("(")]
+    LeftParen,
+
+    #[token(")")]
+    RightParen,
+
+    #[token("{")]
+    LeftBrace,
+
+    #[token("}")]
+    RightBrace,
+
+    #[token("[")]
+    LeftBracket,
+
+    #[token("]")]
+    RightBracket,
+
+    #[token(",")]
+    Comma,
+
+    #[token(".")]
+    Dot,
+
+    #[token(";")]
+    Semicolon,
+
+    #[token(":")]
+    Colon,
+
+    #[token("=")]
+    Equal,
 
     #[token("+")]
     Plus,
@@ -57,14 +126,14 @@ pub enum Token {
     #[token("/")]
     Slash,
 
-    #[token("=")]
-    Equal,
-
-    #[token("==")]
-    EqualEqual,
+    #[token("!")]
+    Bang,
 
     #[token("!=")]
     BangEqual,
+
+    #[token("==")]
+    EqualEqual,
 
     #[token("<")]
     Less,
@@ -78,139 +147,71 @@ pub enum Token {
     #[token(">=")]
     GreaterEqual,
 
-    #[token("!")]
-    Bang,
-
     #[token("&&")]
     And,
 
     #[token("||")]
     Or,
 
-    #[token("(")]
-    LParen,
+    #[token("if")]
+    If,
 
-    #[token(")")]
-    RParen,
+    #[token("else")]
+    Else,
 
-    #[token("{")]
-    LBrace,
+    #[token("while")]
+    While,
 
-    #[token("}")]
-    RBrace,
+    #[token("for")]
+    For,
 
-    #[token("[")]
-    LBracket,
+    #[token("fn")]
+    Function,
 
-    #[token("]")]
-    RBracket,
+    #[token("return")]
+    Return,
 
-    #[token(",")]
-    Comma,
+    #[token("let")]
+    Let,
 
-    #[token(".")]
-    Dot,
+    #[token("const")]
+    Const,
 
-    #[token(":")]
-    Colon,
+    #[token("async")]
+    Async,
 
-    #[token(";")]
-    Semicolon,
-
-    #[token("~")]
-    Tilde,
-
-    #[regex(r#""[^"]*""#, |lex| {
-        let slice = lex.slice();
-        Some(slice[1..slice.len()-1].to_string())
-    })]
-    String(String),
-
-    #[regex(r"[0-9]+(\.[0-9]+)?", |lex| {
-        lex.slice().parse().ok()
-    })]
-    Float(f64),
-
-    #[regex(r"true|false", |lex| {
-        match lex.slice() {
-            "true" => Some(true),
-            "false" => Some(false),
-            _ => None,
-        }
-    })]
-    Boolean(bool),
-
-    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| {
-        Some(lex.slice().to_string())
-    })]
-    Identifier(String),
-
-    #[regex(r"[ \t\n\r]+", logos::skip)]
-    #[regex(r"//[^\n]*", logos::skip)]
-    #[error]
-    Error,
-}
-
-impl fmt::Display for Token {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Token::Function => write!(f, "fn"),
-            Token::Let => write!(f, "let"),
-            Token::If => write!(f, "if"),
-            Token::Else => write!(f, "else"),
-            Token::While => write!(f, "while"),
-            Token::For => write!(f, "for"),
-            Token::Break => write!(f, "break"),
-            Token::Continue => write!(f, "continue"),
-            Token::Return => write!(f, "return"),
-            Token::Try => write!(f, "try"),
-            Token::Catch => write!(f, "catch"),
-            Token::Throw => write!(f, "throw"),
-            Token::Context => write!(f, "context"),
-            Token::Verify => write!(f, "verify"),
-            Token::Plus => write!(f, "+"),
-            Token::Minus => write!(f, "-"),
-            Token::Star => write!(f, "*"),
-            Token::Slash => write!(f, "/"),
-            Token::Equal => write!(f, "="),
-            Token::EqualEqual => write!(f, "=="),
-            Token::BangEqual => write!(f, "!="),
-            Token::Less => write!(f, "<"),
-            Token::LessEqual => write!(f, "<="),
-            Token::Greater => write!(f, ">"),
-            Token::GreaterEqual => write!(f, ">="),
-            Token::Bang => write!(f, "!"),
-            Token::And => write!(f, "&&"),
-            Token::Or => write!(f, "||"),
-            Token::LParen => write!(f, "("),
-            Token::RParen => write!(f, ")"),
-            Token::LBrace => write!(f, "{{"),
-            Token::RBrace => write!(f, "}}"),
-            Token::LBracket => write!(f, "["),
-            Token::RBracket => write!(f, "]"),
-            Token::Comma => write!(f, ","),
-            Token::Dot => write!(f, "."),
-            Token::Colon => write!(f, ":"),
-            Token::Semicolon => write!(f, ";"),
-            Token::Tilde => write!(f, "~"),
-            Token::String(s) => write!(f, "\"{}\"", s),
-            Token::Float(n) => write!(f, "{}", n),
-            Token::Boolean(b) => write!(f, "{}", b),
-            Token::Identifier(name) => write!(f, "{}", name),
-            Token::Error => write!(f, "ERROR"),
-        }
-    }
+    #[token("await")]
+    Await,
 }
 
 pub struct Lexer<'a> {
-    inner: logos::Lexer<'a, Token>,
+    lexer: logos::Lexer<'a, Token>,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
-            inner: Token::lexer(input),
+            lexer: Token::lexer(input),
         }
+    }
+
+    pub fn lex(&mut self) -> Result<(Vec<Token>, Vec<usize>, Vec<usize>), Box<dyn std::error::Error>> {
+        let mut tokens = Vec::new();
+        let mut starts = Vec::new();
+        let mut ends = Vec::new();
+
+        while let Some(token_result) = self.lexer.next() {
+            match token_result {
+                Token::Error => return Err("Invalid token".into()),
+                token => {
+                    starts.push(self.lexer.span().start);
+                    ends.push(self.lexer.span().end);
+                    tokens.push(token);
+                }
+            }
+        }
+
+        Ok((tokens, starts, ends))
     }
 }
 
@@ -218,92 +219,6 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next()
-    }
-}
-
-impl Token {
-    pub fn is_identifier(&self) -> bool {
-        matches!(self, Token::Identifier(_))
-    }
-
-    pub fn is_string(&self) -> bool {
-        matches!(self, Token::String(_))
-    }
-
-    pub fn is_float(&self) -> bool {
-        matches!(self, Token::Float(_))
-    }
-
-    pub fn is_boolean(&self) -> bool {
-        matches!(self, Token::Boolean(_))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_lexer() {
-        let source = r#"
-            fn main() {
-                let x = 42.0;
-                let s = "hello";
-                if true {
-                    return x;
-                }
-            }
-        "#;
-
-        let tokens: Vec<_> = Lexer::new(source).collect();
-        assert!(tokens.len() > 0);
-        assert!(matches!(tokens[0], Token::Function));
-        assert!(matches!(tokens[1], Token::Identifier(ref s) if s == "main"));
-    }
-
-    #[test]
-    fn test_number_lexing() {
-        let source = "42.5";
-        let tokens: Vec<_> = Lexer::new(source).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(tokens[0], Token::Float(n) if (n - 42.5).abs() < f64::EPSILON));
-    }
-
-    #[test]
-    fn test_string_lexing() {
-        let source = r#""hello world""#;
-        let tokens: Vec<_> = Lexer::new(source).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(tokens[0], Token::String(ref s) if s == "hello world"));
-    }
-
-    #[test]
-    fn test_identifier_lexing() {
-        let source = "variable_name";
-        let tokens: Vec<_> = Lexer::new(source).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(tokens[0], Token::Identifier(ref s) if s == "variable_name"));
-    }
-
-    #[test]
-    fn test_confidence_flow_lexing() {
-        let source = "x ~> 0.9";
-        let tokens: Vec<_> = Lexer::new(source).collect();
-        assert_eq!(tokens.len(), 4);
-        assert!(matches!(tokens[0], Token::Identifier(ref s) if s == "x"));
-        assert!(matches!(tokens[1], Token::Tilde));
-        assert!(matches!(tokens[2], Token::Greater));
-        assert!(matches!(tokens[3], Token::Float(n) if (n - 0.9).abs() < f64::EPSILON));
-    }
-
-    #[test]
-    fn test_context_lexing() {
-        let source = r#"context "validation" { let x = 0.8; }"#;
-        let tokens: Vec<_> = Lexer::new(source).collect();
-        assert!(matches!(tokens[0], Token::Context));
-        assert!(matches!(tokens[1], Token::String(ref s) if s == "validation"));
-        assert!(matches!(tokens[2], Token::LBrace));
-        assert!(matches!(tokens[3], Token::Let));
+        self.lexer.next()
     }
 } 

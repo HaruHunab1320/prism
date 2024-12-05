@@ -1,45 +1,65 @@
-use crate::error::RuntimeError;
-use crate::interpreter::Interpreter;
-use crate::stdlib::Module;
 use crate::types::Value;
-use std::sync::Arc;
+use crate::interpreter::Interpreter;
+use std::error::Error;
 
-pub fn create_core_module() -> Module {
-    let mut module = Module::new("core");
-
-    module.register_function("to_string", Value::NativeFunction(Arc::new(|_interpreter: &mut Interpreter, args: Vec<Value>| {
+pub fn register_core_functions(interpreter: &mut Interpreter) {
+    interpreter.register_native_function("len", |_, args| {
         if args.len() != 1 {
-            return Err(RuntimeError::TypeError("to_string takes exactly 1 argument".to_string()));
+            return Err("len() takes exactly one argument".into());
         }
-        Ok(Value::String(args[0].to_string()))
-    })));
 
-    module.register_function("len", Value::NativeFunction(Arc::new(|_interpreter: &mut Interpreter, args: Vec<Value>| {
-        if args.len() != 1 {
-            return Err(RuntimeError::TypeError("len takes exactly 1 argument".to_string()));
-        }
         match &args[0] {
             Value::Array(arr) => Ok(Value::Float(arr.len() as f64)),
             Value::String(s) => Ok(Value::Float(s.len() as f64)),
-            _ => Err(RuntimeError::TypeError(format!("Cannot get length of {}", args[0].get_type()))),
+            Value::Object(obj) => Ok(Value::Float(obj.len() as f64)),
+            _ => Err("len() requires array, string, or object argument".into()),
         }
-    })));
+    });
 
-    module.register_function("keys", Value::NativeFunction(Arc::new(|_interpreter: &mut Interpreter, args: Vec<Value>| {
-        if args.len() != 1 {
-            return Err(RuntimeError::TypeError("keys takes exactly 1 argument".to_string()));
+    interpreter.register_native_function("push", |_, args| {
+        if args.len() != 2 {
+            return Err("push() takes exactly two arguments".into());
         }
+
         match &args[0] {
-            Value::Object(fields) => {
-                let keys: Vec<Value> = fields
-                    .iter()
+            Value::Array(arr) => {
+                let mut new_arr = arr.clone();
+                new_arr.push(args[1].clone());
+                Ok(Value::Array(new_arr))
+            },
+            _ => Err("push() requires array as first argument".into()),
+        }
+    });
+
+    interpreter.register_native_function("keys", |_, args| {
+        if args.len() != 1 {
+            return Err("keys() takes exactly one argument".into());
+        }
+
+        match &args[0] {
+            Value::Object(obj) => {
+                let keys: Vec<Value> = obj.iter()
                     .map(|(k, _)| Value::String(k.clone()))
                     .collect();
                 Ok(Value::Array(keys))
-            }
-            _ => Err(RuntimeError::TypeError(format!("Cannot get keys of {}", args[0].get_type()))),
+            },
+            _ => Err("keys() requires object argument".into()),
         }
-    })));
+    });
 
-    module
+    interpreter.register_native_function("values", |_, args| {
+        if args.len() != 1 {
+            return Err("values() takes exactly one argument".into());
+        }
+
+        match &args[0] {
+            Value::Object(obj) => {
+                let values: Vec<Value> = obj.iter()
+                    .map(|(_, v)| v.clone())
+                    .collect();
+                Ok(Value::Array(values))
+            },
+            _ => Err("values() requires object argument".into()),
+        }
+    });
 } 

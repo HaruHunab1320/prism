@@ -128,6 +128,123 @@ fn semantic_match(text1: string, text2: string) -> float ~0.9 {
     return similarity ~> 0.85;
 }
 
+// Basic expressions and confidence flow
+let x = 42 ~> 0.9;
+let y = 3.14 ~> 0.95;
+let combined = x && y;  // Confidence combination
+
+// Context operations
+in context "medical" {
+    let diagnosis = "flu" ~> 0.8;
+    
+    // Context transition
+    context transition "medical" to "treatment" with confidence 0.85 {
+        let treatment = "antibiotics" ~> 0.9;
+    }
+}
+
+// Pattern matching with confidence
+let symptom = "fever" ~> 0.9;
+match symptom {
+    x ~{0.8, 1.0} => {
+        print("High confidence symptom: " + x);
+    },
+    x ~{0.5, 0.79} => {
+        print("Medium confidence symptom: " + x);
+    },
+    _ => {
+        print("Low confidence symptom: " + x);
+    }
+}
+
+// Tensor operations
+let v1 = tensor([1.0, 0.0, 0.0], [3]) ~> 0.9;
+let v2 = tensor([0.0, 1.0, 0.0], [3]) ~> 0.85;
+let similarity = v1.cosine_similarity(v2);
+let normalized = v1.normalize();
+
+// Semantic matching
+let pattern = "patient has fever and cough";
+let description = "severe fever with persistent cough";
+let match_score = pattern ~= description;
+
+// Verification system
+verify against sources ["medical_database", "research_papers"] {
+    let condition = "influenza" ~> 0.85;
+    assert(condition.confidence > 0.8);
+}
+
+// Uncertain conditionals
+let confidence_value = 0.75;
+uncertain if (confidence_value > 0.8) {
+    print("High confidence path");
+} medium (confidence_value > 0.6) {
+    print("Medium confidence path");
+} low {
+    print("Low confidence path");
+}
+
+// Try-confidence blocks
+try confidence {
+    let risky_operation = "surgery" ~> 0.7;
+} below threshold 0.8 {
+    print("Confidence too low for operation");
+} uncertain {
+    print("Error in confidence calculation");
+}
+
+// Async operations with confidence
+async fn analyze_data(data: string) -> string ~0.9 {
+    let result = await llm.analyze(data) ~> 0.85;
+    return result ~> 0.9;
+}
+
+// Function with confidence level
+fn calculate_risk(age: float, health_score: float) -> float ~0.95 {
+    let base_risk = age / 100.0;
+    let adjusted_risk = base_risk * (1.0 - health_score);
+    return adjusted_risk ~> 0.9;
+}
+
+// Testing all features together
+async fn run_medical_analysis() ~0.9 {
+    in context "diagnosis" {
+        let symptoms = ["fever", "cough", "fatigue"];
+        let confidences = [0.9, 0.85, 0.75];
+        
+        let diagnosis = verify against sources ["medical_records"] {
+            for i in 0:symptoms.length {
+                let symptom = symptoms[i] ~> confidences[i];
+                match symptom {
+                    s ~{0.8, 1.0} => {
+                        print("Critical symptom: " + s);
+                    },
+                    _ => {
+                        print("Regular symptom: " + s);
+                    }
+                }
+            }
+            
+            let analysis = await analyze_data("Patient symptoms: " + symptoms.join(", "));
+            return analysis ~> 0.9;
+        }
+        
+        uncertain if (diagnosis.confidence > 0.8) {
+            context transition "diagnosis" to "treatment" with confidence 0.9 {
+                let treatment_plan = await llm.generate_treatment(diagnosis);
+                print("Treatment plan: " + treatment_plan);
+            }
+        } medium {
+            print("Need more tests for confident diagnosis");
+        } low {
+            print("Insufficient confidence for diagnosis");
+        }
+    }
+}
+
+// Run the test
+run_medical_analysis();
+
 // Main test function
 async fn main() {
     // Test basic operations
