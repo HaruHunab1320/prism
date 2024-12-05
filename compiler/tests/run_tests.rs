@@ -1,13 +1,13 @@
-use std::error::Error;
-use std::time::Instant;
 use colored::*;
 use prism::Interpreter;
+use std::error::Error;
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Instant;
 
 mod integration_tests;
 
-type TestFuture = Pin<Box<dyn Future<Output = Result<(), Box<dyn Error>>> + Send>>;
+type TestFuture = Pin<Box<dyn Future<Output = Result<(), Box<dyn Error + Send + Sync>>> + Send>>;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -20,17 +20,49 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Run individual feature tests
     let tests: Vec<(&str, TestFuture)> = vec![
-        ("Confidence Flow", Box::pin(async { integration_tests::test_confidence_flow().await })),
-        ("Context Operations", Box::pin(async { integration_tests::test_context_operations().await })),
-        ("Pattern Matching", Box::pin(async { integration_tests::test_pattern_matching().await })),
-        ("Tensor Operations", Box::pin(async { integration_tests::test_tensor_operations().await })),
-        ("Semantic Matching", Box::pin(async { integration_tests::test_semantic_matching().await })),
-        ("Verification System", Box::pin(async { integration_tests::test_verification().await })),
-        ("Uncertain Conditionals", Box::pin(async { integration_tests::test_uncertain_conditionals().await })),
-        ("Try-Confidence Blocks", Box::pin(async { integration_tests::test_try_confidence().await })),
-        ("Async Operations", Box::pin(async { integration_tests::test_async_operations().await })),
-        ("All Features Combined", Box::pin(async { integration_tests::test_all_features().await })),
+        (
+            "Confidence Flow",
+            Box::pin(async { integration_tests::test_confidence_flow().await }),
+        ),
+        (
+            "Context Operations",
+            Box::pin(async { integration_tests::test_context_operations().await }),
+        ),
+        (
+            "Pattern Matching",
+            Box::pin(async { integration_tests::test_pattern_matching().await }),
+        ),
+        (
+            "Tensor Operations",
+            Box::pin(async { integration_tests::test_tensor_operations().await }),
+        ),
+        (
+            "Semantic Matching",
+            Box::pin(async { integration_tests::test_semantic_matching().await }),
+        ),
+        (
+            "Verification System",
+            Box::pin(async { integration_tests::test_verification().await }),
+        ),
+        (
+            "Uncertain Conditionals",
+            Box::pin(async { integration_tests::test_uncertain_conditionals().await }),
+        ),
+        (
+            "Try-Confidence Blocks",
+            Box::pin(async { integration_tests::test_try_confidence().await }),
+        ),
+        (
+            "Async Operations",
+            Box::pin(async { integration_tests::test_async_operations().await }),
+        ),
+        (
+            "All Features Combined",
+            Box::pin(async { integration_tests::test_all_features().await }),
+        ),
     ];
+
+    let total_tests = tests.len();
 
     for (name, test) in tests {
         print!("Testing {:<30}", name);
@@ -51,7 +83,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let duration = start_time.elapsed();
     println!("\n{}", "Test Summary".bold());
     println!("------------");
-    println!("Total Tests: {}", tests.len());
+    println!("Total Tests: {}", total_tests);
     println!("Passed:      {}", passed.to_string().green());
     println!("Failed:      {}", failed.to_string().red());
     println!("Duration:    {:.2?}", duration);
@@ -80,4 +112,4 @@ mod tests {
     async fn test_runner() -> Result<(), Box<dyn Error>> {
         integration_tests::run_all_tests().await
     }
-} 
+}

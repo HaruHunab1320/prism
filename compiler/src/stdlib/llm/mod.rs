@@ -1,39 +1,35 @@
-use crate::value::Value;
-use crate::interpreter::Interpreter;
+use crate::ast::Value;
 use std::error::Error;
-use std::sync::Arc;
-use crate::stdlib::Module;
+use std::fmt;
 
-pub fn create_llm_module() -> Module {
-    let mut module = Module::new("llm");
+#[derive(Debug)]
+pub struct LLMError(String);
 
-    module.register_function("complete", Value::AsyncFn(Arc::new(|args: Vec<Value>| {
-        Box::pin(async move {
-            if args.len() != 1 {
-                return Err("complete takes exactly one argument".into());
-            }
-            let prompt = match &args[0] {
-                Value::String(s) => s.clone(),
-                _ => return Err("complete requires a string argument".into()),
-            };
-            // TODO: Implement LLM completion
-            Ok(Value::String(format!("Completed: {}", prompt)))
-        })
-    })));
+impl fmt::Display for LLMError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "LLM error: {}", self.0)
+    }
+}
 
-    module.register_function("analyze", Value::AsyncFn(Arc::new(|args: Vec<Value>| {
-        Box::pin(async move {
-            if args.len() != 1 {
-                return Err("analyze takes exactly one argument".into());
-            }
-            let text = match &args[0] {
-                Value::String(s) => s.clone(),
-                _ => return Err("analyze requires a string argument".into()),
-            };
-            // TODO: Implement LLM analysis
-            Ok(Value::String(format!("Analysis: {}", text)))
-        })
-    })));
+impl Error for LLMError {}
 
-    module
-} 
+pub struct LLMClient {
+    api_key: String,
+}
+
+impl LLMClient {
+    pub fn new(api_key: String) -> Self {
+        Self { api_key }
+    }
+
+    pub async fn semantic_match(
+        &self,
+        text: &str,
+        pattern: &str,
+    ) -> Result<f64, Box<dyn Error + Send + Sync>> {
+        // TODO: Implement actual LLM semantic matching
+        // For now, return a simple string matching score
+        let score = if text.contains(pattern) { 1.0 } else { 0.0 };
+        Ok(score)
+    }
+}

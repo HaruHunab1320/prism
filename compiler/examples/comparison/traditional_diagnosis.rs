@@ -16,7 +16,8 @@ impl MedicalAPI {
     }
 
     pub async fn validate_symptom(&self, symptom: &str) -> Result<f64, Box<dyn Error>> {
-        let response = self.client
+        let response = self
+            .client
             .post("https://api.medical.ai/validate")
             .header("Authorization", &self.api_key)
             .json(&json!({
@@ -30,7 +31,8 @@ impl MedicalAPI {
     }
 
     pub async fn get_disease_pattern(&self, disease: &str) -> Result<String, Box<dyn Error>> {
-        let response = self.client
+        let response = self
+            .client
             .get(&format!("https://api.medical.ai/patterns/{}", disease))
             .header("Authorization", &self.api_key)
             .send()
@@ -40,8 +42,13 @@ impl MedicalAPI {
         Ok(result["pattern"].as_str().unwrap_or("").to_string())
     }
 
-    pub async fn semantic_match(&self, symptoms: &[&str], pattern: &str) -> Result<f64, Box<dyn Error>> {
-        let response = self.client
+    pub async fn semantic_match(
+        &self,
+        symptoms: &[&str],
+        pattern: &str,
+    ) -> Result<f64, Box<dyn Error>> {
+        let response = self
+            .client
             .post("https://api.medical.ai/match")
             .header("Authorization", &self.api_key)
             .json(&json!({
@@ -90,10 +97,12 @@ pub async fn diagnose(api_key: String) -> Result<Vec<serde_json::Value>, Box<dyn
     }
 
     results.sort_by(|a, b| {
-        b["confidence"].as_f64().unwrap_or(0.0)
+        b["confidence"]
+            .as_f64()
+            .unwrap_or(0.0)
             .partial_cmp(&a["confidence"].as_f64().unwrap_or(0.0))
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
     Ok(results)
-} 
+}

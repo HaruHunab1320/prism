@@ -1,6 +1,6 @@
 use std::error::Error;
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 use prism::Interpreter;
 
@@ -28,4 +28,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Err(e)
         }
     }
-} 
+}

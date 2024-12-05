@@ -1,5 +1,5 @@
-use std::error::Error;
 use prism::{Interpreter, Value};
+use std::error::Error;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -40,7 +40,10 @@ pub fn test_context_operations() -> TestFuture {
 
         let result = eval_code(source).await?;
         assert!(result.get_confidence().unwrap_or(0.0) > 0.8);
-        assert_eq!(result.get_context().unwrap_or_default(), "treatment".to_string());
+        assert_eq!(
+            result.get_context().unwrap_or_default(),
+            "treatment".to_string()
+        );
         Ok(())
     })
 }
@@ -184,4 +187,4 @@ pub async fn run_all_tests() -> Result<(), Box<dyn Error>> {
     test_async_operations().await?;
     test_all_features().await?;
     Ok(())
-} 
+}

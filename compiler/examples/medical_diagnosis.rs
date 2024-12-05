@@ -1,5 +1,5 @@
-use std::error::Error;
 use prism::Interpreter;
+use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -54,4 +54,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let result = interpreter.eval(source.to_string()).await?;
     println!("Diagnosis Results: {:#?}", result);
     Ok(())
-} 
+}

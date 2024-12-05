@@ -1,17 +1,17 @@
-mod ast;
-mod error;
-mod interpreter;
-mod lexer;
-mod parser;
-mod stdlib;
-mod value;
-mod llm;
+pub mod ast;
+pub mod environment;
+pub mod error;
+pub mod interpreter;
+pub mod lexer;
+pub mod llm;
+pub mod parser;
+pub mod stdlib;
 
-pub use interpreter::Interpreter;
-pub use value::Value;
-pub use lexer::Lexer;
-pub use parser::Parser;
-
-pub trait Error: std::error::Error + Send + Sync + 'static {}
-
-impl<T> Error for T where T: std::error::Error + Send + Sync + 'static {}
+pub use ast::*;
+pub use environment::*;
+pub use error::ParseError as ErrorParseError;
+pub use interpreter::*;
+pub use lexer::*;
+pub use llm::*;
+pub use parser::ParseError as ParserParseError;
+pub use stdlib::*;

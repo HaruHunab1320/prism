@@ -1,53 +1,51 @@
+use crate::ast::Value;
 use std::collections::HashMap;
-use crate::types::Value;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Environment {
-    values: HashMap<String, Value>,
-    confidence_values: HashMap<String, f64>,
-    current_context: Option<String>,
+    scopes: Vec<HashMap<String, Value>>,
 }
 
 impl Environment {
     pub fn new() -> Self {
         Self {
-            values: HashMap::new(),
-            confidence_values: HashMap::new(),
-            current_context: None,
+            scopes: vec![HashMap::new()],
         }
     }
 
-    pub fn define(&mut self, name: &str, value: Value) {
-        self.values.insert(name.to_string(), value);
-    }
-
-    pub fn define_with_confidence(&mut self, name: &str, value: Value, confidence: f64) {
-        self.values.insert(name.to_string(), value);
-        self.confidence_values.insert(name.to_string(), confidence);
-    }
-
-    pub fn get(&self, name: &str) -> Option<&Value> {
-        self.values.get(name)
-    }
-
-    pub fn get_confidence(&self, name: &str) -> Option<f64> {
-        self.confidence_values.get(name).copied()
-    }
-
-    pub fn assign(&mut self, name: &str, value: Value) -> bool {
-        if self.values.contains_key(name) {
-            self.values.insert(name.to_string(), value);
-            true
-        } else {
-            false
+    pub fn define(&mut self, name: String, value: Value) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name, value);
         }
     }
 
-    pub fn set_context(&mut self, context: Option<String>) {
-        self.current_context = context;
+    pub fn get(&self, name: &str) -> Option<Value> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(value) = scope.get(name) {
+                return Some(value.clone());
+            }
+        }
+        None
     }
 
-    pub fn get_current_context(&self) -> Option<&String> {
-        self.current_context.as_ref()
+    pub fn assign(&mut self, name: &str, value: Value) -> Result<(), String> {
+        for scope in self.scopes.iter_mut().rev() {
+            if scope.contains_key(name) {
+                scope.insert(name.to_string(), value);
+                return Ok(());
+            }
+        }
+        Err(format!("Undefined variable '{}'.", name))
     }
-} 
+
+    pub fn push(&mut self) {
+        self.scopes.push(HashMap::new());
+    }
+
+    pub fn pop(&mut self) {
+        self.scopes.pop();
+        if self.scopes.is_empty() {
+            self.scopes.push(HashMap::new());
+        }
+    }
+}

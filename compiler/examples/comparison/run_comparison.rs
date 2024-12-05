@@ -1,6 +1,6 @@
+use prism::Interpreter;
 use std::error::Error;
 use std::time::Instant;
-use prism::{Interpreter, Lexer, Parser};
 
 mod traditional_diagnosis;
 
@@ -53,7 +53,10 @@ pub async fn run_comparison() -> Result<(), Box<dyn Error>> {
     // Compare results
     println!("\nComparison:");
     println!("-----------");
-    println!("Time Difference: {:?}", trad_time.as_secs_f64() - prism_time.as_secs_f64());
+    println!(
+        "Time Difference: {:?}",
+        trad_time.as_secs_f64() - prism_time.as_secs_f64()
+    );
     println!("Code Size Ratio: ~4:1 (Traditional:Prism)");
     println!("Maintainability: Prism code is more declarative and focused on the domain logic");
     println!("Error Handling: Prism provides automatic error propagation and confidence tracking");
@@ -70,4 +73,4 @@ mod tests {
     async fn test_comparison() -> Result<(), Box<dyn Error>> {
         run_comparison().await
     }
-} 
+}
