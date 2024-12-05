@@ -1,39 +1,109 @@
 use std::collections::HashMap;
-use std::error::Error;
-use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::fmt;
+use crate::interpreter::Interpreter;
 
-pub type AsyncFnOutput = Result<Value, Box<dyn Error + Send + Sync>>;
-pub type AsyncFnFuture = Pin<Box<dyn Future<Output = AsyncFnOutput> + Send + Sync>>;
-pub type AsyncFn =
-    Arc<dyn Fn(&mut crate::interpreter::Interpreter, Vec<Value>) -> AsyncFnFuture + Send + Sync>;
+pub type AsyncResult<T> = Pin<Box<dyn Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>> + Send + Sync>>;
+pub type AsyncFn = Arc<dyn Fn(&Interpreter, Vec<Value>) -> AsyncResult<Value> + Send + Sync>;
 
-#[derive(Debug, Clone)]
-pub enum Stmt {
-    Expression(Expr),
-    Let(String, Expr),
-    Block(Vec<Stmt>),
-    If {
-        condition: Expr,
-        then_branch: Box<Stmt>,
-        else_branch: Option<Box<Stmt>>,
-    },
-    While {
-        condition: Expr,
-        body: Box<Stmt>,
-    },
-    Function {
-        name: String,
-        params: Vec<String>,
-        body: Box<Stmt>,
-        is_async: bool,
-    },
-    Return(Box<Expr>),
+#[derive(Clone)]
+pub enum Value {
+    Null,
+    Bool(bool),
+    Number(f64),
+    String(String),
+    Array(Vec<Value>),
+    Object(HashMap<String, Value>),
+    AsyncFn(AsyncFn),
+    Pattern(String),
+    Wildcard,
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Null => write!(f, "null"),
+            Value::Bool(b) => write!(f, "{}", b),
+            Value::Number(n) => write!(f, "{}", n),
+            Value::String(s) => write!(f, "\"{}\"", s),
+            Value::Array(arr) => {
+                write!(f, "[")?;
+                for (i, v) in arr.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{:?}", v)?;
+                }
+                write!(f, "]")
+            }
+            Value::Object(obj) => {
+                write!(f, "{{")?;
+                for (i, (k, v)) in obj.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "\"{}\": {:?}", k, v)?;
+                }
+                write!(f, "}}")
+            }
+            Value::AsyncFn(_) => write!(f, "<function>"),
+            Value::Pattern(p) => write!(f, "pattern(\"{}\")", p),
+            Value::Wildcard => write!(f, "_"),
+        }
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Null, Value::Null) => true,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Number(a), Value::Number(b)) => (a - b).abs() < f64::EPSILON,
+            (Value::String(a), Value::String(b)) => a == b,
+            (Value::Array(a), Value::Array(b)) => a == b,
+            (Value::Object(a), Value::Object(b)) => a == b,
+            (Value::Pattern(a), Value::Pattern(b)) => a == b,
+            (Value::Wildcard, Value::Wildcard) => true,
+            (Value::AsyncFn(_), Value::AsyncFn(_)) => false, // Functions are never equal
+            _ => false,
+        }
+    }
+}
+
+impl Value {
+    pub fn get_confidence(&self) -> Option<f64> {
+        match self {
+            Value::Number(n) => Some(*n),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum UnaryOp {
+    Not,
+    Minus,
+}
+
+#[derive(Clone, Debug)]
+pub enum BinaryOp {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Equal,
+    NotEqual,
+    Greater,
+    GreaterEqual,
+    Less,
+    LessEqual,
+    And,
+    Or,
+}
+
+#[derive(Clone, Debug)]
 pub enum Expr {
     Literal(Value),
     Variable(String),
@@ -66,105 +136,25 @@ pub enum Expr {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum UnaryOp {
-    Not,
-    Minus,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum BinaryOp {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Equal,
-    NotEqual,
-    Greater,
-    GreaterEqual,
-    Less,
-    LessEqual,
-    And,
-    Or,
-}
-
-#[derive(Clone)]
-pub enum Value {
-    Null,
-    Bool(bool),
-    Number(f64),
-    String(String),
-    List(Vec<Value>),
-    Object(HashMap<String, Value>),
-    AsyncFn(AsyncFn),
-}
-
-impl PartialEq for Value {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Value::Null, Value::Null) => true,
-            (Value::Bool(a), Value::Bool(b)) => a == b,
-            (Value::Number(a), Value::Number(b)) => a == b,
-            (Value::String(a), Value::String(b)) => a == b,
-            (Value::List(a), Value::List(b)) => a == b,
-            (Value::Object(a), Value::Object(b)) => a == b,
-            (Value::AsyncFn(_), Value::AsyncFn(_)) => false, // Functions are never equal
-            _ => false,
-        }
-    }
-}
-
-impl fmt::Debug for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Value::Null => write!(f, "null"),
-            Value::Bool(b) => write!(f, "{}", b),
-            Value::Number(n) => write!(f, "{}", n),
-            Value::String(s) => write!(f, "\"{}\"", s),
-            Value::List(items) => {
-                write!(f, "[")?;
-                for (i, item) in items.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{:?}", item)?;
-                }
-                write!(f, "]")
-            }
-            Value::Object(map) => {
-                write!(f, "{{")?;
-                for (i, (key, value)) in map.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "\"{}\": {:?}", key, value)?;
-                }
-                write!(f, "}}")
-            }
-            Value::AsyncFn(_) => write!(f, "<async function>"),
-        }
-    }
-}
-
-impl Value {
-    pub fn as_bool(&self) -> Option<bool> {
-        match self {
-            Value::Bool(b) => Some(*b),
-            _ => None,
-        }
-    }
-
-    pub fn as_number(&self) -> Option<f64> {
-        match self {
-            Value::Number(n) => Some(*n),
-            _ => None,
-        }
-    }
-
-    pub fn confidence(&self) -> Option<f64> {
-        match self {
-            Value::Object(obj) => obj.get("confidence").and_then(|v| v.as_number()),
-            _ => None,
-        }
-    }
+#[derive(Clone, Debug)]
+pub enum Stmt {
+    Expression(Expr),
+    Let(String, Expr),
+    Block(Vec<Stmt>),
+    If {
+        condition: Expr,
+        then_branch: Box<Stmt>,
+        else_branch: Option<Box<Stmt>>,
+    },
+    While {
+        condition: Expr,
+        body: Box<Stmt>,
+    },
+    Function {
+        name: String,
+        params: Vec<String>,
+        body: Box<Stmt>,
+        is_async: bool,
+    },
+    Return(Box<Expr>),
 }

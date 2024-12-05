@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use prism::Interpreter;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
         println!("Usage: prism <file>");

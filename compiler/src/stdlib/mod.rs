@@ -24,9 +24,9 @@ impl Module {
         self.functions.get(name)
     }
 }
-pub fn register_all_functions(interpreter: &mut Interpreter) {
+pub fn register_all_functions(interpreter: &Interpreter) {
     core::register_core_functions(interpreter);
-    utils::register_utils_functions(interpreter);
     llm::register_llm_functions(interpreter);
     medical::register_medical_functions(interpreter);
+    utils::register_utils_functions(interpreter);
 }

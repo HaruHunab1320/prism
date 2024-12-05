@@ -1,8 +1,9 @@
 use crate::ast::Value;
 use crate::interpreter::Interpreter;
 
-pub fn register_medical_functions(interpreter: &mut Interpreter) {
-    interpreter.register_native_function("validate_symptom", |_, args| {
+pub fn register_medical_functions(interpreter: &Interpreter) {
+    interpreter.register_native_function("validate_symptom", |interpreter: &Interpreter, args: Vec<Value>| {
+        let api_key = interpreter.get_api_key().to_string();
         Box::pin(async move {
             if args.len() != 1 {
                 return Err("validate_symptom() takes exactly one argument".into());
@@ -13,20 +14,17 @@ pub fn register_medical_functions(interpreter: &mut Interpreter) {
                 _ => return Err("Argument must be a string".into()),
             };
 
-            // TODO: Implement actual symptom validation
-            // For now, return a mock confidence score
-            let confidence = match symptom.as_str() {
-                "fever" => 0.9,
-                "cough" => 0.85,
-                "fatigue" => 0.8,
-                _ => 0.5,
-            };
+            // Use LLM to validate if this is a real medical symptom
+            let pattern = "This is a valid medical symptom";
+            let client = crate::stdlib::llm::LLMClient::new(api_key);
+            let confidence = client.semantic_match(&symptom, pattern).await?;
 
             Ok(Value::Number(confidence))
         })
     });
 
-    interpreter.register_native_function("get_disease_pattern", |_, args| {
+    interpreter.register_native_function("get_disease_pattern", |interpreter: &Interpreter, args: Vec<Value>| {
+        let api_key = interpreter.get_api_key().to_string();
         Box::pin(async move {
             if args.len() != 1 {
                 return Err("get_disease_pattern() takes exactly one argument".into());
@@ -37,16 +35,12 @@ pub fn register_medical_functions(interpreter: &mut Interpreter) {
                 _ => return Err("Argument must be a string".into()),
             };
 
-            // TODO: Implement actual disease pattern lookup
-            // For now, return mock patterns
-            let pattern = match disease.as_str() {
-                "flu" => "fever AND (cough OR fatigue)",
-                "covid" => "fever AND cough AND fatigue",
-                "cold" => "(cough OR fever) AND NOT fatigue",
-                _ => "unknown",
-            };
+            // Create a pattern that describes the typical symptoms of the disease
+            let pattern = format!("Common symptoms of {} include:", disease);
+            let client = crate::stdlib::llm::LLMClient::new(api_key);
+            let _confidence = client.semantic_match(&disease, &pattern).await?;
 
-            Ok(Value::String(pattern.to_string()))
+            Ok(Value::Pattern(pattern))
         })
     });
 }

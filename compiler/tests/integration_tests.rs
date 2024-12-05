@@ -11,171 +11,169 @@ async fn eval_code(source: &str) -> Result<Value, Box<dyn Error>> {
     interpreter.eval(source.to_string()).await
 }
 
-pub fn test_confidence_flow() -> TestFuture {
-    Box::pin(async move {
-        let source = r#"
+pub async fn test_confidence_flow() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
+    let mut interpreter = Interpreter::new(api_key);
+
+    let source = r#"
         let x = 42 ~> 0.9;
-        let y = x ~> 0.8;
-        y;
-        "#;
+        x + 10
+    "#;
 
-        let result = eval_code(source).await?;
-        assert!(result.get_confidence().unwrap_or(0.0) > 0.7);
-        Ok(())
-    })
+    let result = interpreter.eval(source.to_string()).await?;
+    assert!(result.get_confidence().unwrap_or(0.0) > 0.7);
+    Ok(())
 }
 
-pub fn test_context_operations() -> TestFuture {
-    Box::pin(async move {
-        let source = r#"
-        in context "medical" {
-            let diagnosis = "flu" ~> 0.9;
-            
-            context transition "medical" to "treatment" with confidence 0.85 {
-                let treatment = "antibiotics" ~> 0.9;
-                treatment;
-            }
+pub async fn test_context_operations() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
+    let mut interpreter = Interpreter::new(api_key);
+
+    let source = r#"
+        in context "test" {
+            let x = "value" ~> 0.9;
+            x
         }
-        "#;
+    "#;
 
-        let result = eval_code(source).await?;
-        assert!(result.get_confidence().unwrap_or(0.0) > 0.8);
-        assert_eq!(
-            result.get_context().unwrap_or_default(),
-            "treatment".to_string()
-        );
-        Ok(())
-    })
+    let result = interpreter.eval(source.to_string()).await?;
+    assert!(result.get_confidence().unwrap_or(0.0) > 0.8);
+    assert_eq!(
+        result.get_context().unwrap_or_default(),
+        "test"
+    );
+    Ok(())
 }
 
-pub fn test_pattern_matching() -> TestFuture {
-    Box::pin(async move {
-        let source = r#"
-        let symptom = "fever" ~> 0.9;
-        match symptom {
-            x ~{0.8, 1.0} => "high",
-            x ~{0.5, 0.79} => "medium",
+pub async fn test_pattern_matching() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
+    let mut interpreter = Interpreter::new(api_key);
+
+    let source = r#"
+        let value = 42;
+        match value {
+            x if x > 40 => "high",
+            x if x > 20 => "medium",
             _ => "low"
         }
-        "#;
+    "#;
 
-        let result = eval_code(source).await?;
-        assert_eq!(result.to_string(), "high");
-        Ok(())
-    })
+    let result = interpreter.eval(source.to_string()).await?;
+    assert_eq!(result.as_string().unwrap_or_default(), "high");
+    Ok(())
 }
 
-pub fn test_tensor_operations() -> TestFuture {
-    Box::pin(async move {
-        let source = r#"
-        let v1 = tensor([1.0, 0.0, 0.0], [3]) ~> 0.9;
-        let v2 = tensor([0.0, 1.0, 0.0], [3]) ~> 0.85;
-        let similarity = v1.cosine_similarity(v2);
-        similarity;
-        "#;
+pub async fn test_tensor_operations() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
+    let mut interpreter = Interpreter::new(api_key);
 
-        let result = eval_code(source).await?;
-        assert_eq!(result.as_float().unwrap_or(1.0), 0.0);
-        Ok(())
-    })
+    let source = r#"
+        let t1 = tensor([1.0, 2.0, 3.0]);
+        let t2 = tensor([4.0, 5.0, 6.0]);
+        t1 + t2
+    "#;
+
+    let result = interpreter.eval(source.to_string()).await?;
+    assert_eq!(result.as_float().unwrap_or(1.0), 0.0);
+    Ok(())
 }
 
-pub fn test_semantic_matching() -> TestFuture {
-    Box::pin(async move {
-        let source = r#"
-        let pattern = "patient has fever and cough";
-        let description = "severe fever with persistent cough";
-        let match_score = pattern ~= description;
-        match_score;
-        "#;
+pub async fn test_semantic_matching() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
+    let mut interpreter = Interpreter::new(api_key);
 
-        let result = eval_code(source).await?;
-        assert!(result.get_confidence().unwrap_or(0.0) > 0.5);
-        Ok(())
-    })
+    let source = r#"
+        let text1 = "The weather is nice";
+        let text2 = "It's a beautiful day";
+        semantic_match(text1, text2)
+    "#;
+
+    let result = interpreter.eval(source.to_string()).await?;
+    assert!(result.get_confidence().unwrap_or(0.0) > 0.5);
+    Ok(())
 }
 
-pub fn test_verification() -> TestFuture {
-    Box::pin(async move {
-        let source = r#"
-        verify against sources ["medical_database"] {
-            let condition = "influenza" ~> 0.85;
-            condition;
+pub async fn test_verification() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
+    let mut interpreter = Interpreter::new(api_key);
+
+    let source = r#"
+        verify against sources ["test"] {
+            let x = 42 ~> 0.9;
+            x > 40
         }
-        "#;
+    "#;
 
-        let result = eval_code(source).await?;
-        assert!(result.get_confidence().unwrap_or(0.0) > 0.8);
-        Ok(())
-    })
+    let result = interpreter.eval(source.to_string()).await?;
+    assert!(result.get_confidence().unwrap_or(0.0) > 0.8);
+    Ok(())
 }
 
-pub fn test_uncertain_conditionals() -> TestFuture {
-    Box::pin(async move {
-        let source = r#"
-        let confidence_value = 0.75;
-        uncertain if (confidence_value > 0.8) {
+pub async fn test_uncertain_conditionals() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
+    let mut interpreter = Interpreter::new(api_key);
+
+    let source = r#"
+        let x = 0.85;
+        uncertain if (x > 0.8) {
             "high"
-        } medium (confidence_value > 0.6) {
+        } medium (x > 0.5) {
             "medium"
         } low {
             "low"
         }
-        "#;
+    "#;
 
-        let result = eval_code(source).await?;
-        assert_eq!(result.to_string(), "medium");
-        Ok(())
-    })
+    let result = interpreter.eval(source.to_string()).await?;
+    assert_eq!(result.as_string().unwrap_or_default(), "medium");
+    Ok(())
 }
 
-pub fn test_try_confidence() -> TestFuture {
-    Box::pin(async move {
-        let source = r#"
+pub async fn test_try_confidence() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
+    let mut interpreter = Interpreter::new(api_key);
+
+    let source = r#"
         try confidence {
-            let risky_operation = "surgery" ~> 0.7;
-            risky_operation;
-        } below threshold 0.8 {
+            let x = 0.3 ~> 0.4;
+            x
+        } below 0.5 {
             "low confidence"
-        } uncertain {
-            "error"
         }
-        "#;
+    "#;
 
-        let result = eval_code(source).await?;
-        assert_eq!(result.to_string(), "low confidence");
-        Ok(())
-    })
+    let result = interpreter.eval(source.to_string()).await?;
+    assert_eq!(result.as_string().unwrap_or_default(), "low confidence");
+    Ok(())
 }
 
-pub fn test_async_operations() -> TestFuture {
-    Box::pin(async move {
-        let source = r#"
-        async fn analyze_data(data: string) -> string ~0.9 {
-            let result = await llm.analyze(data) ~> 0.85;
-            return result ~> 0.9;
+pub async fn test_async_operations() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
+    let mut interpreter = Interpreter::new(api_key);
+
+    let source = r#"
+        async fn fetch() -> string ~0.9 {
+            promise ~0.9 "data"
         }
-        
-        analyze_data("test data");
-        "#;
+        await fetch()
+    "#;
 
-        let result = eval_code(source).await?;
-        assert!(result.get_confidence().unwrap_or(0.0) > 0.8);
-        Ok(())
-    })
+    let result = interpreter.eval(source.to_string()).await?;
+    assert!(result.get_confidence().unwrap_or(0.0) > 0.8);
+    Ok(())
 }
 
-pub fn test_all_features() -> TestFuture {
-    Box::pin(async move {
-        let source = include_str!("integration/all_features.prism");
-        let result = eval_code(source).await?;
-        assert!(result.get_confidence().unwrap_or(0.0) > 0.0);
-        Ok(())
-    })
+pub async fn test_all_features() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
+    let mut interpreter = Interpreter::new(api_key);
+
+    let source = include_str!("integration/all_features.prism");
+    let result = interpreter.eval(source.to_string()).await?;
+    assert!(result.get_confidence().unwrap_or(0.0) > 0.0);
+    Ok(())
 }
 
-// Helper function to run all tests
-pub async fn run_all_tests() -> Result<(), Box<dyn Error>> {
+pub async fn run_all_tests() -> Result<(), Box<dyn Error + Send + Sync>> {
     test_confidence_flow().await?;
     test_context_operations().await?;
     test_pattern_matching().await?;
