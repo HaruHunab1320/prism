@@ -7,8 +7,8 @@ pub mod medical;
 pub mod utils;
 #[derive(Debug, Clone)]
 pub struct Module {
-    name: String,
-    functions: HashMap<String, Value>,
+    pub(crate) name: String,
+    pub(crate) functions: HashMap<String, Value>,
 }
 impl Module {
     pub fn new(name: &str) -> Self {
@@ -20,14 +20,13 @@ impl Module {
     pub fn register_function(&mut self, name: &str, function: Value) {
         self.functions.insert(name.to_string(), function);
     }
-}
-pub fn register_core_functions(interpreter: &mut Interpreter) {
-    core::register_core_functions(interpreter);
-}
-pub fn register_utils_functions(interpreter: &mut Interpreter) {
-    utils::register_utils_functions(interpreter);
+    pub fn get_function(&self, name: &str) -> Option<&Value> {
+        self.functions.get(name)
+    }
 }
 pub fn register_all_functions(interpreter: &mut Interpreter) {
-    register_core_functions(interpreter);
-    register_utils_functions(interpreter);
+    core::register_core_functions(interpreter);
+    utils::register_utils_functions(interpreter);
+    llm::register_llm_functions(interpreter);
+    medical::register_medical_functions(interpreter);
 }
