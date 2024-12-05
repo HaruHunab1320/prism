@@ -25,6 +25,16 @@ web-sys = { version = "0.3", features = ["Request", "RequestInit", "RequestMode"
 serde-wasm-bindgen = "0.4"
 dotenv = { version = "0.15", optional = true }
 colored = { version = "2.0", optional = true }
+ndarray = "0.15"
+async-trait = "0.1"
+futures = "0.3"
+log = "0.4"
+env_logger = "0.9"
+
+[dev-dependencies]
+tokio-test = "0.4"
+pretty_assertions = "1.0"
+test-log = "0.2"
 
 [features]
 default = ["native"]
@@ -40,4 +50,12 @@ required-features = ["native"]
 name = "medical_diagnosis"
 path = "examples/medical_diagnosis.rs"
 required-features = ["native"]
+
+[profile.release]
+opt-level = 3
+lto = true
+
+[profile.dev]
+opt-level = 0
+debug = true
  

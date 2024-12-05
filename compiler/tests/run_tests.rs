@@ -1,9 +1,13 @@
 use std::error::Error;
 use std::time::Instant;
 use colored::*;
-use prism::{Lexer, Parser, Interpreter};
+use prism::Interpreter;
+use std::future::Future;
+use std::pin::Pin;
 
 mod integration_tests;
+
+type TestFuture = Pin<Box<dyn Future<Output = Result<(), Box<dyn Error>>> + Send>>;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -15,17 +19,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut failed = 0;
 
     // Run individual feature tests
-    let tests = vec![
-        ("Confidence Flow", integration_tests::test_confidence_flow()),
-        ("Context Operations", integration_tests::test_context_operations()),
-        ("Pattern Matching", integration_tests::test_pattern_matching()),
-        ("Tensor Operations", integration_tests::test_tensor_operations()),
-        ("Semantic Matching", integration_tests::test_semantic_matching()),
-        ("Verification System", integration_tests::test_verification()),
-        ("Uncertain Conditionals", integration_tests::test_uncertain_conditionals()),
-        ("Try-Confidence Blocks", integration_tests::test_try_confidence()),
-        ("Async Operations", integration_tests::test_async_operations()),
-        ("All Features Combined", integration_tests::test_all_features()),
+    let tests: Vec<(&str, TestFuture)> = vec![
+        ("Confidence Flow", Box::pin(async { integration_tests::test_confidence_flow().await })),
+        ("Context Operations", Box::pin(async { integration_tests::test_context_operations().await })),
+        ("Pattern Matching", Box::pin(async { integration_tests::test_pattern_matching().await })),
+        ("Tensor Operations", Box::pin(async { integration_tests::test_tensor_operations().await })),
+        ("Semantic Matching", Box::pin(async { integration_tests::test_semantic_matching().await })),
+        ("Verification System", Box::pin(async { integration_tests::test_verification().await })),
+        ("Uncertain Conditionals", Box::pin(async { integration_tests::test_uncertain_conditionals().await })),
+        ("Try-Confidence Blocks", Box::pin(async { integration_tests::test_try_confidence().await })),
+        ("Async Operations", Box::pin(async { integration_tests::test_async_operations().await })),
+        ("All Features Combined", Box::pin(async { integration_tests::test_all_features().await })),
     ];
 
     for (name, test) in tests {
@@ -62,18 +66,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 // Helper function to run a single test file
 pub async fn run_test_file(source: &str) -> Result<(), Box<dyn Error>> {
-    let mut lexer = Lexer::new(source);
-    let (tokens, starts, ends) = lexer.lex()?;
-    let mut parser = Parser::new(source.to_string(), tokens, starts, ends);
-    let statements = parser.parse()?;
-
     let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
     let mut interpreter = Interpreter::new(api_key);
-
-    for stmt in statements {
-        interpreter.eval_stmt(stmt).await?;
-    }
-
+    interpreter.eval(source.to_string()).await?;
     Ok(())
 }
 

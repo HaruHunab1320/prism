@@ -1,4 +1,4 @@
-use crate::types::Value;
+use crate::value::Value;
 use crate::interpreter::Interpreter;
 use std::error::Error;
 

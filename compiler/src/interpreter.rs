@@ -1,141 +1,210 @@
 use std::error::Error;
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::future::Future;
 use std::pin::Pin;
+use std::future::Future;
 
 use crate::ast::{Expr, Stmt};
-use crate::context::ContextManager;
-use crate::environment::Environment;
-use crate::lexer::Lexer;
+use crate::value::Value;
 use crate::llm::LLMClient;
-use crate::parser::Parser;
-use crate::types::Value;
+use crate::stdlib;
+
+#[derive(Debug, Clone)]
+pub struct Context {
+    pub name: String,
+    pub confidence: f64,
+}
+
+#[derive(Debug)]
+pub struct ContextManager {
+    contexts: Vec<Context>,
+}
+
+impl ContextManager {
+    pub fn new() -> Self {
+        Self {
+            contexts: Vec::new(),
+        }
+    }
+
+    pub fn push_context(&mut self, name: String, confidence: f64) {
+        self.contexts.push(Context { name, confidence });
+    }
+
+    pub fn pop_context(&mut self) -> Option<Context> {
+        self.contexts.pop()
+    }
+
+    pub fn current_context(&self) -> Option<&Context> {
+        self.contexts.last()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Environment {
+    values: HashMap<String, Value>,
+    parent: Option<Box<Environment>>,
+}
+
+impl Environment {
+    pub fn new() -> Self {
+        Self {
+            values: HashMap::new(),
+            parent: None,
+        }
+    }
+
+    pub fn with_parent(parent: Environment) -> Self {
+        Self {
+            values: HashMap::new(),
+            parent: Some(Box::new(parent)),
+        }
+    }
+
+    pub fn define(&mut self, name: String, value: Value) {
+        self.values.insert(name, value);
+    }
+
+    pub fn get(&self, name: &str) -> Option<Value> {
+        match self.values.get(name) {
+            Some(value) => Some(value.clone()),
+            None => self.parent.as_ref().and_then(|p| p.get(name)),
+        }
+    }
+
+    pub fn assign(&mut self, name: &str, value: Value) -> Result<(), Box<dyn Error>> {
+        if self.values.contains_key(name) {
+            self.values.insert(name.to_string(), value);
+            Ok(())
+        } else if let Some(parent) = &mut self.parent {
+            parent.assign(name, value)
+        } else {
+            Err(format!("Undefined variable '{}'.", name).into())
+        }
+    }
+}
 
 pub struct Interpreter {
-    env: Environment,
-    llm_client: LLMClient,
+    environment: Environment,
     context_manager: ContextManager,
+    llm_client: LLMClient,
 }
 
 impl Interpreter {
     pub fn new(api_key: String) -> Self {
-        Self {
-            env: Environment::new(),
+        let mut interpreter = Self {
+            environment: Environment::new(),
+            context_manager: ContextManager::new(),
             llm_client: LLMClient::new(api_key),
-            context_manager: ContextManager::new(0.8),
-        }
-    }
+        };
 
-    pub async fn eval(&mut self, source: String) -> Result<Value, Box<dyn Error>> {
-        let mut lexer = Lexer::new(&source);
-        let (tokens, starts, ends) = lexer.lex()?;
-        let mut parser = Parser::new(source, tokens, starts, ends);
-        let statements = parser.parse()?;
-        
-        let mut last_value = Value::Void;
-        for stmt in statements {
-            last_value = self.eval_stmt_boxed(stmt).await?;
-        }
-        Ok(last_value)
+        stdlib::register_core_functions(&mut interpreter);
+        stdlib::register_utils_functions(&mut interpreter);
+
+        interpreter
     }
 
     pub fn register_native_function<F>(&mut self, name: &str, f: F)
     where
         F: Fn(&mut Interpreter, Vec<Value>) -> Result<Value, Box<dyn Error>> + Send + Sync + 'static,
     {
-        self.env.define(name, Value::NativeFunction(Arc::new(f)));
+        self.environment.define(name.to_string(), Value::NativeFunction(Arc::new(f)));
     }
 
-    pub async fn eval_stmt(&mut self, stmt: Stmt) -> Result<Value, Box<dyn Error>> {
-        self.eval_stmt_boxed(stmt).await
+    pub async fn eval(&mut self, source: String) -> Result<Value, Box<dyn Error>> {
+        let mut lexer = crate::lexer::Lexer::new(&source);
+        let (tokens, starts, ends) = lexer.lex()?;
+        let mut parser = crate::parser::Parser::new(source, tokens, starts, ends);
+        let statements = parser.parse()?;
+
+        let mut last_value = Value::None;
+        for stmt in statements {
+            last_value = self.eval_stmt(stmt).await?;
+        }
+        Ok(last_value)
     }
 
-    pub async fn eval_expr(&mut self, expr: Expr) -> Result<Value, Box<dyn Error>> {
-        self.eval_expr_boxed(expr).await
-    }
-
-    fn eval_stmt_boxed(&mut self, stmt: Stmt) -> Pin<Box<dyn Future<Output = Result<Value, Box<dyn Error>>> + '_>> {
+    pub fn eval_stmt(&mut self, stmt: Stmt) -> Pin<Box<dyn Future<Output = Result<Value, Box<dyn Error>>> + '_>> {
         Box::pin(async move {
             match stmt {
-                Stmt::Expression(expr) => self.eval_expr_boxed(expr).await,
+                Stmt::Expression(expr) => self.eval_expr(expr).await,
                 Stmt::Let(name, initializer) => {
-                    let value = match initializer {
-                        Some(expr) => self.eval_expr_boxed(expr).await?,
-                        None => Value::Void,
-                    };
-                    self.env.define(&name, value.clone());
+                    let value = self.eval_expr(initializer).await?;
+                    self.environment.define(name, value.clone());
                     Ok(value)
-                },
+                }
                 Stmt::Block(statements) => {
-                    let mut result = Value::Void;
-                    for stmt in statements {
-                        result = self.eval_stmt_boxed(stmt).await?;
-                    }
-                    Ok(result)
-                },
-                Stmt::Context(name, body) => {
-                    let old_context = self.env.get_current_context().cloned();
-                    self.env.set_context(Some(name));
-                    let result = self.eval_stmt_boxed(*body).await;
-                    self.env.set_context(old_context);
-                    result
-                },
-                Stmt::Verify(_sources, body) => {
-                    let old_threshold = self.context_manager.get_threshold();
-                    self.context_manager.set_threshold(0.9);
-                    let result = self.eval_stmt_boxed(*body).await;
-                    self.context_manager.set_threshold(old_threshold);
-                    result
-                },
-                Stmt::UncertainIf(condition, then_branch, medium_branch, else_branch) => {
-                    let cond_value = self.eval_expr_boxed(condition).await?;
-                    let confidence = match &cond_value {
-                        Value::Float(n) => *n,
-                        _ => return Err("Condition must evaluate to a confidence value".into()),
-                    };
+                    let mut last_value = Value::None;
+                    let mut scope = Environment::with_parent(self.environment.clone());
+                    std::mem::swap(&mut self.environment, &mut scope);
 
-                    if confidence > 0.8 {
-                        self.eval_stmt_boxed(*then_branch).await
-                    } else if confidence > 0.5 && medium_branch.is_some() {
-                        self.eval_stmt_boxed(*medium_branch.unwrap()).await
-                    } else if else_branch.is_some() {
-                        self.eval_stmt_boxed(*else_branch.unwrap()).await
-                    } else {
-                        Ok(Value::Void)
+                    for stmt in statements {
+                        last_value = self.eval_stmt(stmt).await?;
                     }
-                },
-                Stmt::TryConfidence { body, below_threshold, uncertain, threshold } => {
-                    let result = self.eval_stmt_boxed(*body).await;
-                    match result {
-                        Ok(value) => {
-                            let confidence = value.get_confidence().unwrap_or(1.0);
-                            if confidence < threshold {
-                                self.eval_stmt_boxed(*below_threshold).await
-                            } else {
-                                Ok(value)
-                            }
+
+                    std::mem::swap(&mut self.environment, &mut scope);
+                    Ok(last_value)
+                }
+                Stmt::Context(name, body) => {
+                    self.context_manager.push_context(name, 1.0);
+                    let result = self.eval_stmt(*body).await?;
+                    self.context_manager.pop_context();
+                    Ok(result)
+                }
+                Stmt::ContextTransition { from_context, to_context, confidence, body } => {
+                    if let Some(current) = self.context_manager.current_context() {
+                        if current.name != from_context {
+                            return Err(format!("Expected context '{}', but was in context '{}'", from_context, current.name).into());
                         }
-                        Err(_) => self.eval_stmt_boxed(*uncertain).await,
                     }
-                },
-                _ => Ok(Value::Void),
+
+                    self.context_manager.pop_context();
+                    self.context_manager.push_context(to_context, confidence);
+                    let result = self.eval_stmt(*body).await?;
+                    Ok(result)
+                }
+                Stmt::Verify(sources, body) => {
+                    // TODO: Implement verification against sources
+                    self.eval_stmt(*body).await
+                }
+                Stmt::Function { name, params: _, body: _, is_async } => {
+                    let func = if is_async {
+                        let body = Arc::new(move |args: Vec<Value>| -> Pin<Box<dyn Future<Output = Result<Value, Box<dyn Error>>> + Send>> {
+                            Box::pin(async move {
+                                Ok(Value::None) // TODO: Implement async function evaluation
+                            })
+                        });
+                        Value::AsyncFn(body)
+                    } else {
+                        let body = Arc::new(move |_interpreter: &mut Interpreter, _args: Vec<Value>| -> Result<Value, Box<dyn Error>> {
+                            Ok(Value::None) // TODO: Implement function evaluation
+                        });
+                        Value::NativeFunction(body)
+                    };
+                    self.environment.define(name, func);
+                    Ok(Value::None)
+                }
             }
         })
     }
 
-    fn eval_expr_boxed(&mut self, expr: Expr) -> Pin<Box<dyn Future<Output = Result<Value, Box<dyn Error>>> + '_>> {
+    pub fn eval_expr(&mut self, expr: Expr) -> Pin<Box<dyn Future<Output = Result<Value, Box<dyn Error>>> + '_>> {
         Box::pin(async move {
             match expr {
                 Expr::Literal(value) => Ok(value),
                 Expr::Variable(name) => {
-                    self.env.get(&name).cloned().ok_or_else(|| format!("Undefined variable '{}'", name).into())
-                },
+                    self.environment.get(&name)
+                        .ok_or_else(|| format!("Undefined variable '{}'.", name).into())
+                }
+                Expr::Assign(name, value) => {
+                    let value = self.eval_expr(*value).await?;
+                    self.environment.assign(&name, value.clone())?;
+                    Ok(value)
+                }
                 Expr::Binary(left, operator, right) => {
-                    let left = self.eval_expr_boxed(*left).await?;
-                    let right = self.eval_expr_boxed(*right).await?;
-                    let left_clone = left.clone();
-                    let right_clone = right.clone();
-                    match (left, operator.as_str(), right) {
+                    let left_val = self.eval_expr(*left).await?;
+                    let right_val = self.eval_expr(*right).await?;
+                    match (left_val.clone(), operator.as_str(), right_val.clone()) {
                         (Value::Float(l), "+", Value::Float(r)) => Ok(Value::Float(l + r)),
                         (Value::Float(l), "-", Value::Float(r)) => Ok(Value::Float(l - r)),
                         (Value::Float(l), "*", Value::Float(r)) => Ok(Value::Float(l * r)),
@@ -145,114 +214,92 @@ impl Interpreter {
                             } else {
                                 Ok(Value::Float(l / r))
                             }
-                        },
+                        }
                         (Value::Float(l), ">", Value::Float(r)) => Ok(Value::Boolean(l > r)),
                         (Value::Float(l), ">=", Value::Float(r)) => Ok(Value::Boolean(l >= r)),
                         (Value::Float(l), "<", Value::Float(r)) => Ok(Value::Boolean(l < r)),
                         (Value::Float(l), "<=", Value::Float(r)) => Ok(Value::Boolean(l <= r)),
                         (Value::Float(l), "==", Value::Float(r)) => Ok(Value::Boolean(l == r)),
                         (Value::Float(l), "!=", Value::Float(r)) => Ok(Value::Boolean(l != r)),
-                        _ => Err(format!("Invalid binary operation: {:?} {} {:?}", left_clone, operator, right_clone).into()),
+                        _ => Err(format!("Invalid binary operation: {:?} {} {:?}", left_val, operator, right_val).into()),
                     }
-                },
+                }
                 Expr::Unary(operator, expr) => {
-                    let value = self.eval_expr_boxed(*expr).await?;
-                    let value_clone = value.clone();
-                    match (operator.as_str(), value) {
+                    let value_val = self.eval_expr(*expr).await?;
+                    match (operator.as_str(), value_val.clone()) {
                         ("-", Value::Float(n)) => Ok(Value::Float(-n)),
                         ("!", Value::Boolean(b)) => Ok(Value::Boolean(!b)),
-                        _ => Err(format!("Invalid unary operation: {} {:?}", operator, value_clone).into()),
+                        _ => Err(format!("Invalid unary operation: {} {:?}", operator, value_val).into()),
                     }
-                },
-                Expr::Grouping(expr) => self.eval_expr_boxed(*expr).await,
+                }
                 Expr::Call(callee, arguments) => {
-                    let callee = self.eval_expr_boxed(*callee).await?;
+                    let callee = self.eval_expr(*callee).await?;
                     let mut args = Vec::new();
                     for arg in arguments {
-                        args.push(self.eval_expr_boxed(arg).await?);
+                        args.push(self.eval_expr(arg).await?);
                     }
                     match callee {
                         Value::NativeFunction(f) => f(self, args),
                         Value::AsyncFn(f) => f(args).await,
-                        _ => Err("Can only call functions".into()),
+                        _ => Err("Can only call functions.".into()),
                     }
-                },
-                Expr::Get(object, name) => {
-                    let object = self.eval_expr_boxed(*object).await?;
-                    match object {
-                        Value::Tensor(values, shape) => {
-                            match name.as_str() {
-                                "cosine_similarity" => Ok(Value::NativeFunction(Arc::new(move |_: &mut Interpreter, args: Vec<Value>| {
-                                    if args.len() != 1 {
-                                        return Err("cosine_similarity takes exactly one argument".into());
-                                    }
-                                    match &args[0] {
-                                        Value::Tensor(other_values, other_shape) if shape == *other_shape => {
-                                            let dot_product: f64 = values.iter().zip(other_values.iter()).map(|(a, b)| a * b).sum();
-                                            let norm1: f64 = values.iter().map(|x| x * x).sum::<f64>().sqrt();
-                                            let norm2: f64 = other_values.iter().map(|x| x * x).sum::<f64>().sqrt();
-                                            
-                                            if norm1 == 0.0 || norm2 == 0.0 {
-                                                Ok(Value::Float(0.0))
-                                            } else {
-                                                Ok(Value::Float(dot_product / (norm1 * norm2)))
-                                            }
-                                        },
-                                        _ => Err("Cosine similarity requires tensors of same shape".into()),
-                                    }
-                                }))),
-                                _ => Err(format!("No such method '{}' on tensor", name).into()),
-                            }
-                        },
-                        _ => Err(format!("Cannot get property '{}' of {:?}", name, object).into()),
-                    }
-                },
-                Expr::ConfidenceFlow(expr, confidence) => {
-                    let value = self.eval_expr_boxed(*expr).await?;
-                    let conf = self.eval_expr_boxed(*confidence).await?;
-                    match conf {
-                        Value::Float(n) if n >= 0.0 && n <= 1.0 => value.with_confidence(n),
-                        _ => Err("Confidence must be a float between 0 and 1".into()),
-                    }
-                },
-                Expr::SemanticMatch(left, right) => {
-                    let left = self.eval_expr_boxed(*left).await?;
-                    let right = self.eval_expr_boxed(*right).await?;
-                    match (left, right) {
+                }
+                Expr::Confidence(expr, confidence) => {
+                    let value = self.eval_expr(*expr).await?;
+                    value.with_confidence(confidence)
+                }
+                Expr::SemanticMatch(pattern, target) => {
+                    let pattern = self.eval_expr(*pattern).await?;
+                    let target = self.eval_expr(*target).await?;
+                    match (pattern, target) {
                         (Value::String(pattern), Value::String(text)) => {
                             let confidence = self.llm_client.semantic_match(&text, &pattern).await?;
                             Ok(Value::Float(confidence))
-                        },
+                        }
                         _ => Err("Semantic match requires string operands".into()),
                     }
-                },
-                Expr::Tensor { values, shape } => {
-                    let mut tensor_values = Vec::new();
-                    for value in values.iter() {
-                        let val = self.eval_expr_boxed(value.clone()).await?;
-                        match val {
-                            Value::Float(n) => tensor_values.push(n),
-                            _ => return Err("Tensor values must be floats".into()),
+                }
+                Expr::Match { value, arms } => {
+                    let value = self.eval_expr(*value).await?;
+                    for (pattern, (min_conf, max_conf), body) in arms {
+                        let pattern_value = self.eval_expr(pattern).await?;
+                        if let Some(confidence) = pattern_value.get_confidence() {
+                            if confidence >= min_conf && confidence <= max_conf {
+                                return self.eval_expr(body).await;
+                            }
                         }
                     }
-
-                    let tensor = match shape {
-                        Some(dims) => {
-                            let total_size: usize = dims.iter().product();
-                            if total_size != tensor_values.len() {
-                                return Err("Tensor shape does not match number of values".into());
+                    Ok(Value::None)
+                }
+                Expr::UncertainIf { conditions } => {
+                    for (condition, confidence_threshold, body) in conditions {
+                        let condition_value = self.eval_expr(condition).await?;
+                        if let Some(value) = condition_value.as_float() {
+                            if value >= confidence_threshold {
+                                return self.eval_expr(body).await;
                             }
-                            Value::Tensor(tensor_values, dims)
-                        },
-                        None => {
-                            let len = tensor_values.len();
-                            Value::Tensor(tensor_values, vec![len])
                         }
-                    };
-
-                    Ok(tensor)
-                },
-                _ => Ok(Value::Void),
+                    }
+                    Ok(Value::None)
+                }
+                Expr::TryConfidence { body, threshold, fallback, error_handler } => {
+                    let result = self.eval_expr(*body).await?;
+                    if let Some(confidence) = result.get_confidence() {
+                        if confidence < threshold {
+                            return self.eval_expr(*fallback).await;
+                        }
+                        Ok(result)
+                    } else {
+                        self.eval_expr(*error_handler).await
+                    }
+                }
+                Expr::Await(expr) => {
+                    let value = self.eval_expr(*expr).await?;
+                    match value {
+                        Value::AsyncFn(f) => f(vec![]).await,
+                        _ => Err("Can only await async functions.".into()),
+                    }
+                }
             }
         })
     }

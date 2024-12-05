@@ -1,45 +1,37 @@
 use std::error::Error;
-use std::fmt;
 use std::sync::Arc;
-use std::future::Future;
 use std::pin::Pin;
+use std::future::Future;
+use std::collections::HashMap;
+use std::fmt;
 use serde::{Serialize, Deserialize};
-
 use crate::interpreter::Interpreter;
 
 #[derive(Clone)]
 pub enum Value {
-    Void,
     Float(f64),
     String(String),
     Boolean(bool),
-    Object(Vec<(String, Value)>),
     Array(Vec<Value>),
+    Object(HashMap<String, Value>),
     NativeFunction(Arc<dyn Fn(&mut Interpreter, Vec<Value>) -> Result<Value, Box<dyn Error>> + Send + Sync>),
     AsyncFn(Arc<dyn Fn(Vec<Value>) -> Pin<Box<dyn Future<Output = Result<Value, Box<dyn Error>>> + Send>> + Send + Sync>),
     Tensor(Vec<f64>, Vec<usize>),
+    None,
 }
 
 impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::Void => write!(f, "void"),
+            Value::None => write!(f, "none"),
             Value::Float(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
-            Value::Object(fields) => {
-                let mut debug_struct = f.debug_struct("Object");
-                for (name, value) in fields {
-                    debug_struct.field(name, value);
-                }
-                debug_struct.finish()
-            },
-            Value::Array(values) => {
-                f.debug_list().entries(values).finish()
-            },
-            Value::NativeFunction(_) => write!(f, "[native function]"),
-            Value::AsyncFn(_) => write!(f, "[async function]"),
-            Value::Tensor(values, shape) => write!(f, "Tensor({:?}, {:?})", values, shape),
+            Value::Array(arr) => write!(f, "{:?}", arr),
+            Value::Object(obj) => write!(f, "{:?}", obj),
+            Value::NativeFunction(_) => write!(f, "<native function>"),
+            Value::AsyncFn(_) => write!(f, "<async function>"),
+            Value::Tensor(values, shape) => write!(f, "Tensor({:?}, shape={:?})", values, shape),
         }
     }
 }
@@ -47,8 +39,8 @@ impl fmt::Debug for Value {
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Value::Void, Value::Void) => true,
-            (Value::Float(a), Value::Float(b)) => a == b,
+            (Value::None, Value::None) => true,
+            (Value::Float(a), Value::Float(b)) => (a - b).abs() < f64::EPSILON,
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Boolean(a), Value::Boolean(b)) => a == b,
             (Value::Array(a), Value::Array(b)) => a == b,
@@ -57,8 +49,8 @@ impl PartialEq for Value {
                     return false;
                 }
                 for (key, value) in a {
-                    if let Some(other_value) = b.iter().find(|(k, _)| k == key) {
-                        if value != &other_value.1 {
+                    if let Some(other_value) = b.get(key) {
+                        if value != other_value {
                             return false;
                         }
                     } else {
@@ -66,10 +58,10 @@ impl PartialEq for Value {
                     }
                 }
                 true
-            },
+            }
             (Value::Tensor(a_values, a_shape), Value::Tensor(b_values, b_shape)) => {
-                a_values == b_values && a_shape == b_shape
-            },
+                a_shape == b_shape && a_values == b_values
+            }
             _ => false,
         }
     }
@@ -78,31 +70,71 @@ impl PartialEq for Value {
 impl Value {
     pub fn get_type(&self) -> &'static str {
         match self {
-            Value::Void => "void",
             Value::Float(_) => "float",
             Value::String(_) => "string",
             Value::Boolean(_) => "boolean",
-            Value::Object(_) => "object",
             Value::Array(_) => "array",
+            Value::Object(_) => "object",
             Value::NativeFunction(_) => "function",
             Value::AsyncFn(_) => "async_function",
             Value::Tensor(_, _) => "tensor",
+            Value::None => "none",
         }
     }
 
     pub fn get_confidence(&self) -> Option<f64> {
         match self {
-            Value::Object(fields) => {
-                fields.iter()
-                    .find(|(name, _)| name == "confidence")
-                    .and_then(|(_, value)| {
-                        if let Value::Float(n) = value {
-                            Some(*n)
-                        } else {
-                            None
-                        }
-                    })
-            }
+            Value::Object(obj) => obj.get("confidence").and_then(|v| v.as_float()),
+            _ => None,
+        }
+    }
+
+    pub fn get_context(&self) -> Option<String> {
+        match self {
+            Value::Object(obj) => obj.get("context").and_then(|v| v.as_string()),
+            _ => None,
+        }
+    }
+
+    pub fn as_float(&self) -> Option<f64> {
+        match self {
+            Value::Float(f) => Some(*f),
+            Value::String(s) => s.parse().ok(),
+            Value::Boolean(b) => Some(if *b { 1.0 } else { 0.0 }),
+            _ => None,
+        }
+    }
+
+    pub fn as_string(&self) -> Option<String> {
+        match self {
+            Value::String(s) => Some(s.clone()),
+            Value::Float(f) => Some(f.to_string()),
+            Value::Boolean(b) => Some(b.to_string()),
+            Value::None => Some("none".to_string()),
+            _ => None,
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            Value::Boolean(b) => Some(*b),
+            Value::Float(f) => Some(*f != 0.0),
+            Value::String(s) => Some(!s.is_empty()),
+            Value::None => Some(false),
+            _ => None,
+        }
+    }
+
+    pub fn as_array(&self) -> Option<&Vec<Value>> {
+        match self {
+            Value::Array(arr) => Some(arr),
+            _ => None,
+        }
+    }
+
+    pub fn as_object(&self) -> Option<&HashMap<String, Value>> {
+        match self {
+            Value::Object(obj) => Some(obj),
             _ => None,
         }
     }
@@ -112,56 +144,34 @@ impl Value {
             return Err("Confidence must be between 0 and 1".into());
         }
 
-        match self {
-            Value::Object(fields) => {
-                let mut new_fields = fields.clone();
-                if let Some(pos) = new_fields.iter().position(|(name, _)| name == "confidence") {
-                    new_fields[pos] = ("confidence".to_string(), Value::Float(confidence));
-                } else {
-                    new_fields.push(("confidence".to_string(), Value::Float(confidence)));
-                }
-                Ok(Value::Object(new_fields))
-            }
-            _ => {
-                let mut fields = Vec::new();
-                fields.push(("value".to_string(), self.clone()));
-                fields.push(("confidence".to_string(), Value::Float(confidence)));
-                Ok(Value::Object(fields))
-            }
-        }
+        let mut obj = HashMap::new();
+        obj.insert("value".to_string(), self.clone());
+        obj.insert("confidence".to_string(), Value::Float(confidence));
+        Ok(Value::Object(obj))
     }
 
     pub fn to_string(&self) -> String {
         match self {
-            Value::Void => "void".to_string(),
-            Value::Float(n) => n.to_string(),
+            Value::Float(f) => f.to_string(),
             Value::String(s) => s.clone(),
             Value::Boolean(b) => b.to_string(),
-            Value::Object(fields) => {
-                let mut result = String::from("{");
-                for (i, (name, value)) in fields.iter().enumerate() {
-                    if i > 0 {
-                        result.push_str(", ");
-                    }
-                    result.push_str(&format!("{}: {}", name, value.to_string()));
-                }
-                result.push('}');
-                result
+            Value::Array(arr) => {
+                let items: Vec<String> = arr.iter().map(|v| v.to_string()).collect();
+                format!("[{}]", items.join(", "))
             }
-            Value::Array(values) => {
-                let mut result = String::from("[");
-                for (i, value) in values.iter().enumerate() {
-                    if i > 0 {
-                        result.push_str(", ");
-                    }
-                    result.push_str(&value.to_string());
-                }
-                result.push(']');
-                result
+            Value::Object(obj) => {
+                let items: Vec<String> = obj
+                    .iter()
+                    .map(|(k, v)| format!("\"{}\": {}", k, v.to_string()))
+                    .collect();
+                format!("{{{}}}", items.join(", "))
             }
-            Value::NativeFunction(_) => "[native function]".to_string(),
-            Value::AsyncFn(_) => "[async function]".to_string(),
-            Value::Tensor(values, shape) => format!("Tensor({:?}, {:?})", values, shape),
+            Value::NativeFunction(_) => "<native function>".to_string(),
+            Value::AsyncFn(_) => "<async function>".to_string(),
+            Value::Tensor(values, shape) => {
+                format!("Tensor({:?}, shape={:?})", values, shape)
+            }
+            Value::None => "none".to_string(),
         }
     }
 }
@@ -172,27 +182,20 @@ impl Serialize for Value {
         S: serde::Serializer,
     {
         match self {
-            Value::Void => serializer.serialize_none(),
+            Value::None => serializer.serialize_none(),
             Value::Float(n) => serializer.serialize_f64(*n),
             Value::String(s) => serializer.serialize_str(s),
             Value::Boolean(b) => serializer.serialize_bool(*b),
-            Value::Object(fields) => {
-                use serde::ser::SerializeMap;
-                let mut map = serializer.serialize_map(Some(fields.len()))?;
-                for (key, value) in fields {
-                    map.serialize_entry(key, value)?;
-                }
-                map.end()
-            }
-            Value::Array(values) => values.serialize(serializer),
-            Value::NativeFunction(_) => serializer.serialize_str("[native function]"),
-            Value::AsyncFn(_) => serializer.serialize_str("[async function]"),
+            Value::Array(arr) => arr.serialize(serializer),
+            Value::Object(obj) => obj.serialize(serializer),
+            Value::NativeFunction(_) => serializer.serialize_str("<native function>"),
+            Value::AsyncFn(_) => serializer.serialize_str("<async function>"),
             Value::Tensor(values, shape) => {
                 use serde::ser::SerializeStruct;
-                let mut s = serializer.serialize_struct("Tensor", 2)?;
-                s.serialize_field("values", values)?;
-                s.serialize_field("shape", shape)?;
-                s.end()
+                let mut state = serializer.serialize_struct("Tensor", 2)?;
+                state.serialize_field("values", values)?;
+                state.serialize_field("shape", shape)?;
+                state.end()
             }
         }
     }
@@ -203,7 +206,7 @@ impl<'de> Deserialize<'de> for Value {
     where
         D: serde::Deserializer<'de>,
     {
-        use serde::de::{self, Visitor, MapAccess, SeqAccess};
+        use serde::de::{self, Visitor};
         use std::fmt;
 
         struct ValueVisitor;
@@ -261,7 +264,7 @@ impl<'de> Deserialize<'de> for Value {
             where
                 E: de::Error,
             {
-                Ok(Value::Void)
+                Ok(Value::None)
             }
 
             fn visit_some<D>(self, deserializer: D) -> Result<Value, D::Error>
@@ -273,7 +276,7 @@ impl<'de> Deserialize<'de> for Value {
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Value, A::Error>
             where
-                A: SeqAccess<'de>,
+                A: de::SeqAccess<'de>,
             {
                 let mut values = Vec::new();
                 while let Some(value) = seq.next_element()? {
@@ -284,13 +287,13 @@ impl<'de> Deserialize<'de> for Value {
 
             fn visit_map<M>(self, mut access: M) -> Result<Value, M::Error>
             where
-                M: MapAccess<'de>,
+                M: de::MapAccess<'de>,
             {
-                let mut fields = Vec::new();
+                let mut map = HashMap::new();
                 while let Some((key, value)) = access.next_entry()? {
-                    fields.push((key, value));
+                    map.insert(key, value);
                 }
-                Ok(Value::Object(fields))
+                Ok(Value::Object(map))
             }
         }
 
