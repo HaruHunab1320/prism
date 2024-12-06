@@ -1,57 +1,31 @@
-use prism::Interpreter;
+use prism::{Interpreter, Value};
 use std::error::Error;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
-    let mut interpreter = Interpreter::new(api_key);
+    let interpreter = Interpreter::new(api_key);
 
     let source = r#"
-    let symptoms = ["fever", "cough", "fatigue"];
-    let diseases = ["flu", "covid", "cold"];
+        // Medical diagnosis example
+        let symptoms = ["fever", "cough", "fatigue"];
+        let severity = "moderate";
+        let duration = "5 days";
 
-    // Validate each symptom
-    let validated_symptoms = [];
-    for symptom in symptoms {
-        let confidence = medical.validate_symptom(symptom);
-        if confidence > 0.7 {
-            validated_symptoms.push(symptom ~> confidence);
-        }
-    }
+        // Perform diagnosis
+        let diagnosis = match symptoms {
+            ["fever", "cough", _] if severity == "moderate" => "Common cold",
+            ["fever", "cough", "fatigue"] if duration > "7 days" => "Flu",
+            ["fever", _, _] if severity == "severe" => "Seek immediate medical attention",
+            _ => "Unknown condition"
+        };
 
-    // Match symptoms against diseases
-    let results = [];
-    for disease in diseases {
-        let pattern = medical.get_disease_pattern(disease);
-        let match_score = medical.semantic_match(validated_symptoms, pattern);
-        
-        uncertain if (match_score > 0.8) {
-            results.push({
-                "disease": disease,
-                "confidence": match_score,
-                "severity": "high"
-            });
-        } medium {
-            results.push({
-                "disease": disease,
-                "confidence": match_score,
-                "severity": "medium"
-            });
-        } low {
-            results.push({
-                "disease": disease,
-                "confidence": match_score,
-                "severity": "low"
-            });
-        }
-    }
-
-    // Sort results by confidence
-    results.sort((a, b) => b.confidence - a.confidence);
-    results
+        // Return diagnosis
+        diagnosis
     "#;
 
     let result = interpreter.eval(source.to_string()).await?;
-    println!("Diagnosis Results: {:#?}", result);
+    println!("Diagnosis: {}", result.as_string().unwrap_or_default());
+
     Ok(())
 }

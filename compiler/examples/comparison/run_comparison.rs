@@ -1,76 +1,38 @@
-use prism::Interpreter;
+use prism::{Interpreter, Value};
 use std::error::Error;
 use std::time::Instant;
 
-mod traditional_diagnosis;
-
-fn main() {
-    println!("Run with: cargo run --example comparison");
-}
-
-pub async fn run_comparison() -> Result<(), Box<dyn Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
+    let interpreter = Interpreter::new(api_key);
 
-    println!("Running Medical Diagnosis Comparison");
-    println!("==================================\n");
+    let source = r#"
+        // Medical diagnosis example
+        let symptoms = ["fever", "cough", "fatigue"];
+        let severity = "moderate";
+        let duration = "5 days";
 
-    // Run Prism version
-    println!("Prism Implementation:");
-    println!("--------------------");
-    let prism_start = Instant::now();
+        // Perform diagnosis
+        let diagnosis = match symptoms {
+            ["fever", "cough", _] if severity == "moderate" => "Common cold",
+            ["fever", "cough", "fatigue"] if duration > "7 days" => "Flu",
+            ["fever", _, _] if severity == "severe" => "Seek immediate medical attention",
+            _ => "Unknown condition"
+        };
 
-    let source = include_str!("../medical_diagnosis.prism");
-    let mut interpreter = Interpreter::new(api_key.clone());
+        // Return diagnosis
+        diagnosis
+    "#;
+
+    // Measure Prism execution time
+    let start = Instant::now();
     let prism_results = interpreter.eval(source.to_string()).await?;
-    let prism_time = prism_start.elapsed();
+    let prism_duration = start.elapsed();
 
-    println!("Results: {:#?}", prism_results);
-    println!("Processing Time: {:?}", prism_time);
-    println!("\nCode Complexity:");
-    println!("- Lines of Code: ~50");
-    println!("- Built-in confidence handling");
-    println!("- Automatic error propagation");
-    println!("- Declarative syntax");
-    println!("- Type inference");
-
-    // Run traditional version
-    println!("\nTraditional Implementation:");
-    println!("--------------------------");
-    let trad_start = Instant::now();
-
-    let traditional_results = traditional_diagnosis::diagnose(api_key).await?;
-    let trad_time = trad_start.elapsed();
-
-    println!("Results: {:#?}", traditional_results);
-    println!("Processing Time: {:?}", trad_time);
-    println!("\nCode Complexity:");
-    println!("- Lines of Code: ~200");
-    println!("- Manual confidence handling");
-    println!("- Manual error handling");
-    println!("- Imperative syntax");
-    println!("- Manual type annotations");
-
-    // Compare results
-    println!("\nComparison:");
-    println!("-----------");
-    println!(
-        "Time Difference: {:?}",
-        trad_time.as_secs_f64() - prism_time.as_secs_f64()
-    );
-    println!("Code Size Ratio: ~4:1 (Traditional:Prism)");
-    println!("Maintainability: Prism code is more declarative and focused on the domain logic");
-    println!("Error Handling: Prism provides automatic error propagation and confidence tracking");
-    println!("Type Safety: Both provide strong type safety, but Prism requires less annotation");
+    println!("Prism Results:");
+    println!("Diagnosis: {}", prism_results.as_string().unwrap_or_default());
+    println!("Time taken: {:?}", prism_duration);
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_comparison() -> Result<(), Box<dyn Error>> {
-        run_comparison().await
-    }
 }
