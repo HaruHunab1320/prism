@@ -1,83 +1,130 @@
-use prism::{Interpreter, Value};
-use std::error::Error;
+use prism::{Interpreter, value::Value};
 
-pub async fn test_confidence_flow() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let source = r#"
-        let x = 42;
-        x + 10
-    "#;
-
-    let result = eval_code(source).await?;
-    assert_eq!(result.as_float().unwrap_or(0.0), 52.0);
-    Ok(())
+#[tokio::test]
+async fn test_basic_arithmetic() {
+    let interpreter = Interpreter::new("test_key".to_string());
+    let result = interpreter.eval("2 + 3 * 4;".to_string()).await.unwrap();
+    assert_eq!(result.as_float().unwrap(), 14.0);
 }
 
-pub async fn test_context_operations() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let source = r#"
-        let x = "test";
-        x
-    "#;
-
-    let result = eval_code(source).await?;
-    assert_eq!(result.as_string().unwrap_or_default(), "test");
-    Ok(())
+#[tokio::test]
+async fn test_variable_declaration() {
+    let interpreter = Interpreter::new("test_key".to_string());
+    let result = interpreter.eval("let x = 42; x;".to_string()).await.unwrap();
+    assert_eq!(result.as_float().unwrap(), 42.0);
 }
 
-pub async fn test_pattern_matching() -> Result<(), Box<dyn Error + Send + Sync>> {
+#[tokio::test]
+async fn test_function_call() {
+    let interpreter = Interpreter::new("test_key".to_string());
     let source = r#"
-        let value = 42;
-        if value > 40 {
-            "high"
-        } else if value > 20 {
-            "medium"
-        } else {
-            "low"
+        fn add(a, b) {
+            return a + b;
         }
+        add(5, 3);
     "#;
-
-    let result = eval_code(source).await?;
-    assert_eq!(result.as_string().unwrap_or_default(), "high");
-    Ok(())
+    let result = interpreter.eval(source.to_string()).await.unwrap();
+    assert_eq!(result.as_float().unwrap(), 8.0);
 }
 
-pub async fn test_basic_arithmetic() -> Result<(), Box<dyn Error + Send + Sync>> {
+#[tokio::test]
+async fn test_if_statement() {
+    let interpreter = Interpreter::new("test_key".to_string());
     let source = r#"
         let x = 10;
-        let y = 5;
-        x + y
+        if (x > 5) {
+            x * 2;
+        } else {
+            x / 2;
+        }
     "#;
-
-    let result = eval_code(source).await?;
-    assert_eq!(result.as_float().unwrap_or(0.0), 15.0);
-    Ok(())
+    let result = interpreter.eval(source.to_string()).await.unwrap();
+    assert_eq!(result.as_float().unwrap(), 20.0);
 }
 
-pub async fn test_string_operations() -> Result<(), Box<dyn Error + Send + Sync>> {
+#[tokio::test]
+async fn test_while_loop() {
+    let interpreter = Interpreter::new("test_key".to_string());
+    let source = r#"
+        let x = 0;
+        let i = 0;
+        while (i < 5) {
+            x = x + i;
+            i = i + 1;
+        }
+        x;
+    "#;
+    let result = interpreter.eval(source.to_string()).await.unwrap();
+    assert_eq!(result.as_float().unwrap(), 10.0);
+}
+
+#[tokio::test]
+async fn test_string_concatenation() {
+    let interpreter = Interpreter::new("test_key".to_string());
     let source = r#"
         let greeting = "Hello";
         let name = "World";
-        greeting + " " + name
+        greeting + " " + name;
     "#;
-
-    let result = eval_code(source).await?;
-    assert_eq!(result.as_string().unwrap_or_default(), "Hello World");
-    Ok(())
+    let result = interpreter.eval(source.to_string()).await.unwrap();
+    assert_eq!(result.as_string().unwrap(), "Hello World");
 }
 
-pub async fn test_boolean_operations() -> Result<(), Box<dyn Error + Send + Sync>> {
+#[tokio::test]
+async fn test_logical_operators() {
+    let interpreter = Interpreter::new("test_key".to_string());
     let source = r#"
-        let x = true;
-        let y = false;
-        x && y
+        let x = 5;
+        let y = 10;
+        x < y and y > 0;
     "#;
-
-    let result = eval_code(source).await?;
-    assert_eq!(result.as_bool().unwrap_or(true), false);
-    Ok(())
+    let result = interpreter.eval(source.to_string()).await.unwrap();
+    assert_eq!(result.as_bool().unwrap(), true);
 }
 
-pub async fn eval_code(source: &str) -> Result<Value, Box<dyn Error + Send + Sync>> {
-    let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
-    let interpreter = Interpreter::new(api_key);
-    interpreter.eval(source.to_string()).await
+#[tokio::test]
+async fn test_async_function() {
+    let interpreter = Interpreter::new("test_key".to_string());
+    let source = r#"
+        async fn delayed_add(a, b) {
+            return a + b;
+        }
+        delayed_add(7, 3);
+    "#;
+    let result = interpreter.eval(source.to_string()).await.unwrap();
+    assert_eq!(result.as_float().unwrap(), 10.0);
+}
+
+#[tokio::test]
+async fn test_nested_scopes() {
+    let interpreter = Interpreter::new("test_key".to_string());
+    let source = r#"
+        let x = 1;
+        {
+            let x = 2;
+            {
+                let x = 3;
+                x;
+            }
+        }
+    "#;
+    let result = interpreter.eval(source.to_string()).await.unwrap();
+    assert_eq!(result.as_float().unwrap(), 3.0);
+}
+
+#[tokio::test]
+async fn test_error_handling() {
+    let interpreter = Interpreter::new("test_key".to_string());
+    let source = r#"
+        fn safe_divide(a, b) {
+            if (b == 0) {
+                return null;
+            } else {
+                return a / b;
+            }
+        }
+        safe_divide(10, 0);
+    "#;
+    let result = interpreter.eval(source.to_string()).await.unwrap();
+    assert!(matches!(result, Value::Null));
 }

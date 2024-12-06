@@ -1,4 +1,4 @@
-use prism::{Interpreter, Value};
+use prism::{Interpreter, value::Value};
 use std::error::Error;
 use std::time::Instant;
 

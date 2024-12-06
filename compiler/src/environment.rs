@@ -1,51 +1,77 @@
-use crate::ast::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use crate::value::Value;
+use crate::error::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Environment {
-    scopes: Vec<HashMap<String, Value>>,
+    values: Arc<RwLock<HashMap<String, Value>>>,
+    pub enclosing: Option<Arc<Environment>>,
 }
 
 impl Environment {
     pub fn new() -> Self {
         Self {
-            scopes: vec![HashMap::new()],
+            values: Arc::new(RwLock::new(HashMap::new())),
+            enclosing: None,
         }
     }
 
-    pub fn define(&mut self, name: String, value: Value) {
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(name, value);
+    pub fn with_enclosing(enclosing: Arc<Environment>) -> Self {
+        Self {
+            values: Arc::new(RwLock::new(HashMap::new())),
+            enclosing: Some(enclosing),
         }
     }
 
-    pub fn get(&self, name: &str) -> Option<Value> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(value) = scope.get(name) {
-                return Some(value.clone());
-            }
+    pub async fn define(&self, name: String, value: Value) {
+        let mut values = self.values.write().await;
+        values.insert(name, value);
+    }
+
+    pub async fn assign(&self, name: &str, value: Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let mut values = self.values.write().await;
+        if values.contains_key(name) {
+            values.insert(name.to_string(), value);
+            Ok(())
+        } else if let Some(enclosing) = &self.enclosing {
+            drop(values); // Release the write lock before recursive call
+            Box::pin(enclosing.assign(name, value)).await
+        } else {
+            Err(Box::new(Error::new(&format!("Undefined variable '{}'.", name))))
         }
-        None
     }
 
-    pub fn assign(&mut self, name: &str, value: Value) -> Result<(), String> {
-        for scope in self.scopes.iter_mut().rev() {
-            if scope.contains_key(name) {
-                scope.insert(name.to_string(), value);
-                return Ok(());
-            }
+    pub async fn get(&self, name: &str) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        let values = self.values.read().await;
+        if let Some(value) = values.get(name) {
+            Ok(value.clone())
+        } else if let Some(enclosing) = &self.enclosing {
+            drop(values); // Release the read lock before recursive call
+            Box::pin(enclosing.get(name)).await
+        } else {
+            Err(Box::new(Error::new(&format!("Undefined variable '{}'.", name))))
         }
-        Err(format!("Undefined variable '{}'.", name))
     }
 
-    pub fn push(&mut self) {
-        self.scopes.push(HashMap::new());
+    pub async fn get_at(&self, distance: usize, name: &str) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        if distance == 0 {
+            self.get(name).await
+        } else if let Some(enclosing) = &self.enclosing {
+            Box::pin(enclosing.get_at(distance - 1, name)).await
+        } else {
+            Err(Box::new(Error::new("Invalid scope distance")))
+        }
     }
 
-    pub fn pop(&mut self) {
-        self.scopes.pop();
-        if self.scopes.is_empty() {
-            self.scopes.push(HashMap::new());
+    pub async fn assign_at(&self, distance: usize, name: &str, value: Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if distance == 0 {
+            self.assign(name, value).await
+        } else if let Some(enclosing) = &self.enclosing {
+            Box::pin(enclosing.assign_at(distance - 1, name, value)).await
+        } else {
+            Err(Box::new(Error::new("Invalid scope distance")))
         }
     }
 }

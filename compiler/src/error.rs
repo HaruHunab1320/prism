@@ -1,6 +1,8 @@
 use std::fmt;
 use std::error::Error as StdError;
 
+pub type BoxError = Box<dyn StdError + Send + Sync>;
+
 #[derive(Debug)]
 pub struct Error {
     message: String,
@@ -8,9 +10,13 @@ pub struct Error {
 
 impl Error {
     pub fn new(message: &str) -> Self {
-        Self {
+        Error {
             message: message.to_string(),
         }
+    }
+
+    pub fn boxed(message: &str) -> BoxError {
+        Box::new(Self::new(message))
     }
 }
 
@@ -22,13 +28,5 @@ impl fmt::Display for Error {
 
 impl StdError for Error {}
 
-// Implement From<Box<dyn StdError + Send + Sync>> for Error
-impl From<Box<dyn StdError + Send + Sync>> for Error {
-    fn from(error: Box<dyn StdError + Send + Sync>) -> Self {
-        Error::new(&error.to_string())
-    }
-}
-
-// Implement Send and Sync since our error type needs to be Send + Sync
 unsafe impl Send for Error {}
 unsafe impl Sync for Error {}

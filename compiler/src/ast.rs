@@ -39,6 +39,18 @@ pub enum Expr {
         operator: Token,
         right: Box<Expr>,
     },
+    Confidence {
+        expr: Box<Expr>,
+        confidence: f64,
+    },
+    ConfidenceCombine {
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
+    InContext {
+        context: String,
+        body: Box<Expr>,
+    },
     Grouping(Box<Expr>),
 }
 
@@ -52,6 +64,12 @@ pub enum Stmt {
         then_branch: Box<Stmt>,
         else_branch: Option<Box<Stmt>>,
     },
+    UncertainIf {
+        condition: Box<Expr>,
+        then_branch: Box<Stmt>,
+        medium_branch: Option<Box<Stmt>>,
+        low_branch: Option<Box<Stmt>>,
+    },
     While {
         condition: Box<Expr>,
         body: Box<Stmt>,
@@ -61,8 +79,13 @@ pub enum Stmt {
         params: Vec<String>,
         body: Box<Stmt>,
         is_async: bool,
+        confidence: Option<f64>,
     },
     Return(Option<Box<Expr>>),
+    Context {
+        name: String,
+        body: Box<Stmt>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

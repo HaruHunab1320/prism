@@ -1,157 +1,119 @@
-<div align="center">
-  <h1>🌈 Prism Programming Language</h1>
-  <p><strong>A modern language designed for the AI-first world</strong></p>
-</div>
+# Prism Programming Language
 
-Prism is a programming language that bridges the gap between traditional software development and AI capabilities. It provides native support for LLM operations while maintaining the robustness and familiarity of traditional programming languages.
+Prism is a modern programming language designed for AI-first development, featuring seamless LLM integration, confidence tracking, and context management.
 
-```prism
-import llm from "std/llm"
+## Features
 
-async fn analyze_sentiment(text: string) -> float {
-    let result = await llm.analyze(text, {
-        task: "sentiment",
-        model: "gpt-4"
-    })
-    return result.score
-}
-```
+### Core Language Features (Implemented ✅)
+- Variables and scoping
+- Functions and closures
+- Async/await support
+- Control flow (if/while/for)
+- Error handling
+- Expression evaluation
+- Block scoping
+- Basic operators (arithmetic, logical, comparison)
+- String operations
+- Testing infrastructure
 
-## Why Prism?
+### Module System (In Progress 🚧)
+- Module structure and interfaces defined
+- Basic module registration
+- Standard library module placeholders
+- TypeScript/WASM integration foundation
 
-- **🤖 AI-Native**: First-class support for LLM operations and AI model interactions
-- **🧩 Modular**: Extensible module system for building domain-specific features
-- **🔒 Type-Safe**: Strong type system with inference for reliable code
-- **⚡ Async-First**: Built-in support for modern asynchronous programming
-- **🛠️ Practical**: Familiar syntax for experienced developers, gentle learning curve for newcomers
+### AI Features (In Progress 🚧)
+- Confidence tracking (partial)
+- Context management (planned)
+- LLM integration (planned)
+- Pattern matching (planned)
+- Medical domain support (planned)
 
-## Features in Action
+### Type System (Planned 📋)
+- Static type checking
+- Type inference
+- Generics
+- Traits and interfaces
+- Custom types and structs
 
-### 1. Native LLM Integration
+### Standard Library (Planned 📋)
+- Data structures
+- String manipulation
+- Math functions
+- File I/O
+- Network operations
+- JSON handling
 
-```prism
-// Chat with AI models as naturally as calling functions
-let response = await llm.chat("Explain quantum computing")
-```
+## Getting Started
 
-### 2. Type-Safe AI Operations
+### Prerequisites
+- Rust toolchain (latest stable version)
+- Cargo package manager
 
-```prism
-type AnalysisResult {
-    sentiment: float,
-    topics: List<string>,
-    summary: string
-}
-
-async fn analyze_text(input: string) -> AnalysisResult {
-    return await llm.analyze(input)
-}
-```
-
-### 3. Extensible Module System
-
-```prism
-// Import only what you need
-import { analyze, classify } from llm
-import { parse_json } from utils
-
-// Create domain-specific functionality
-async fn process_data(data: string) -> json {
-    let result = await analyze(data)
-    return parse_json(result)
-}
-```
-
-## Quick Start
-
+### Installation
 ```bash
-# Install Prism
-cargo install prism-lang
+# Clone the repository
+git clone https://github.com/oneirocom/prism.git
 
-# Create a new project
-prism new my-project
-
-# Run an example
-prism run examples/hello.prism
+# Build the project
+cd prism
+cargo build --release
 ```
 
-## Architecture
+### Basic Usage
+```rust
+// Hello World
+let message = "Hello, World!";
+print(message);
 
-```mermaid
-graph TD
-    A[Your Prism Code] --> B[Parser]
-    B --> C[Type Checker]
-    C --> D[Interpreter]
-    D --> E[Module System]
-    E --> F[Standard Library]
-    E --> G[Custom Modules]
-    F --> H[LLM]
-    F --> I[Core]
-    F --> J[Utils]
-    
-    style A fill:#f9f9f9
-    style F fill:#d4f1f4
-    style G fill:#e8f4d4
+// Function declaration
+fn add(a, b) {
+    return a + b;
+}
+
+// Async function
+async fn fetch_data() {
+    // Async operations here
+}
+
+// Error handling
+fn safe_divide(a, b) {
+    if (b == 0) {
+        return null;
+    }
+    return a / b;
+}
 ```
 
-## Documentation
-
-📚 **[Language Guide](docs/guide/README.md)**
-- Start here to learn Prism basics
-- Step-by-step tutorials
-- Best practices
-
-🧩 **[Module System](docs/modules/README.md)**
-- Understanding Prism's extensibility
-- Creating custom modules
-- Module organization patterns
-
-📖 **[Standard Library](docs/stdlib/README.md)**
-- Built-in modules and functions
-- LLM integration features
-- Utility functions
-
-🔬 **[Examples](examples/README.md)**
-- Real-world use cases
-- Domain-specific examples
-- Integration patterns
-
-## Example: Traditional vs Prism Approach
-
-Here's how Prism simplifies AI integration compared to traditional approaches:
-
-```mermaid
-graph LR
-    subgraph "Traditional Approach"
-        A1[Setup API Client] --> B1[Handle Auth]
-        B1 --> C1[Parse Request]
-        C1 --> D1[Process Response]
-        D1 --> E1[Error Handling]
-    end
-    
-    subgraph "Prism Approach"
-        A2[Import Module] --> B2[Use Function]
-        B2 --> C2[Get Result]
-    end
-    
-    style A1,B1,C1,D1,E1 fill:#ffcccc
-    style A2,B2,C2 fill:#ccffcc
+### Running Tests
+```bash
+cargo test
 ```
 
-## Project Status
+## Project Structure
+```
+prism/
+├── compiler/           # Core compiler implementation
+│   ├── src/
+│   │   ├── lexer.rs   # Lexical analysis
+│   │   ├── parser.rs  # Syntax parsing
+│   │   ├── ast.rs     # Abstract Syntax Tree
+│   │   ├── stdlib/    # Standard library modules
+│   │   └── ...
+│   └── tests/         # Test suite
+├── examples/          # Example programs
+├── prism-ts/         # TypeScript/WASM integration
+└── docs/             # Documentation
+```
 
-Prism is under active development with a focus on:
-- Expanding LLM integration capabilities
-- Enhancing the module system
-- Improving developer experience
-- Building community tools and resources
+## Contributing
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
 
-## Community
+## Development Status
+See [DEVELOPMENT.md](DEVELOPMENT.md) for current development status and progress tracking.
 
-- 💬 [Discord](https://discord.gg/prism) (Coming soon)
-- 📣 [GitHub Discussions](https://github.com/oneirocom/prism/discussions)
-- 📝 [Contributing Guide](CONTRIBUTING.md)
+## Roadmap
+See [ROADMAP.md](ROADMAP.md) for planned features and development timeline.
 
 ## License
-
-MIT License - see [LICENSE](LICENSE) for details
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
