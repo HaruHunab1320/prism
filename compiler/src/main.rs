@@ -4,6 +4,14 @@ use prism::interpreter::Interpreter;
 
 #[tokio::main]
 async fn main() {
+    // Initialize environment
+    prism::init();
+
+    // Setup logging based on environment
+    if env::var("PRISM_DEBUG").unwrap_or_default() == "true" {
+        env_logger::init();
+    }
+
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         eprintln!("Usage: {} <source_file>", args[0]);
