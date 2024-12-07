@@ -1,32 +1,54 @@
+use std::error::Error;
 use std::fmt;
-use std::error::Error as StdError;
-
-pub type BoxError = Box<dyn StdError + Send + Sync>;
 
 #[derive(Debug)]
-pub struct Error {
-    message: String,
+pub enum PrismError {
+    Parse(String),
+    Runtime(String),
+    ModuleNotFound(String),
+    CircularDependency(String),
+    SymbolNotFound { module: String, symbol: String },
+    UndefinedVariable(String),
+    TypeError(String),
+    InvalidArgument(String),
+    InvalidOperation(String),
+    ImportError(String),
+    IOError(std::io::Error),
 }
 
-impl Error {
-    pub fn new(message: &str) -> Self {
-        Error {
-            message: message.to_string(),
+impl fmt::Display for PrismError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PrismError::Parse(msg) => write!(f, "Parse error: {}", msg),
+            PrismError::Runtime(msg) => write!(f, "Runtime error: {}", msg),
+            PrismError::ModuleNotFound(name) => write!(f, "Module not found: {}", name),
+            PrismError::CircularDependency(name) => write!(f, "Circular dependency detected: {}", name),
+            PrismError::SymbolNotFound { module, symbol } => {
+                write!(f, "Symbol '{}' not found in module '{}'", symbol, module)
+            }
+            PrismError::UndefinedVariable(name) => write!(f, "Undefined variable: {}", name),
+            PrismError::TypeError(msg) => write!(f, "Type error: {}", msg),
+            PrismError::InvalidArgument(msg) => write!(f, "Invalid argument: {}", msg),
+            PrismError::InvalidOperation(msg) => write!(f, "Invalid operation: {}", msg),
+            PrismError::ImportError(msg) => write!(f, "Import error: {}", msg),
+            PrismError::IOError(err) => write!(f, "IO error: {}", err),
         }
     }
+}
 
-    pub fn boxed(message: &str) -> BoxError {
-        Box::new(Self::new(message))
+impl Error for PrismError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            PrismError::IOError(err) => Some(err),
+            _ => None,
+        }
     }
 }
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.message)
+impl From<std::io::Error> for PrismError {
+    fn from(err: std::io::Error) -> Self {
+        PrismError::IOError(err)
     }
 }
 
-impl StdError for Error {}
-
-unsafe impl Send for Error {}
-unsafe impl Sync for Error {}
+pub type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;

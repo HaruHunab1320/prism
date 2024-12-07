@@ -1,16 +1,16 @@
-pub mod ast;
-pub mod error;
-pub mod interpreter;
+pub mod token;
 pub mod lexer;
 pub mod parser;
-pub mod value;
+pub mod ast;
+pub mod interpreter;
 pub mod environment;
-
-pub mod stdlib {
-    pub mod core;
-    pub mod llm;
-    pub mod medical;
-    pub mod utils;
-}
+pub mod value;
+pub mod error;
+pub mod module;
+pub mod types;
+pub mod confidence;
+pub mod context;
+pub mod llm;
+pub mod stdlib;
 
 pub use interpreter::Interpreter;

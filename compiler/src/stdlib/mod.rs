@@ -3,12 +3,24 @@ pub mod llm;
 pub mod medical;
 pub mod utils;
 
-use std::error::Error;
+use crate::error::Result;
+use crate::value::Value;
 
-pub fn register_all_functions() -> Result<(), Box<dyn Error + Send + Sync>> {
-    core::register_core_functions()?;
-    llm::register_llm_functions()?;
-    medical::register_medical_functions()?;
-    utils::register_utils_functions()?;
-    Ok(())
+pub async fn create_stdlib() -> Result<Value> {
+    let mut modules = Vec::new();
+    
+    // Create core module
+    modules.push(("core", core::create_core_module()?));
+    
+    // Create llm module
+    modules.push(("llm", llm::create_llm_module()?));
+    
+    // Create medical module
+    modules.push(("medical", medical::create_medical_module()?));
+    
+    // Create utils module
+    modules.push(("utils", utils::create_utils_module()?));
+    
+    // Return all modules
+    Ok(Value::new(crate::value::ValueKind::Object(std::sync::Arc::new(modules))))
 }

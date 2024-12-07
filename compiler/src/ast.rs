@@ -3,13 +3,13 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use crate::interpreter::Interpreter;
-use crate::lexer::Token;
+use crate::token::Token;
 use crate::value::Value;
 
 pub type AsyncResult<T> = Pin<Box<dyn Future<Output = Result<T, Box<dyn Error + Send + Sync>>> + Send + Sync>>;
 pub type AsyncFn = Arc<dyn Fn(&Interpreter, Vec<Value>) -> AsyncResult<Value> + Send + Sync>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Literal(Value),
     Variable(String),
@@ -54,7 +54,7 @@ pub enum Expr {
     Grouping(Box<Expr>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
     Expression(Box<Expr>),
     Let(String, Option<Box<Expr>>),
@@ -85,6 +85,17 @@ pub enum Stmt {
     Context {
         name: String,
         body: Box<Stmt>,
+    },
+    Import {
+        module: String,
+        imports: Vec<(String, Option<String>)>, // (name, alias)
+        confidence: Option<f64>,
+    },
+    Export(String, Box<Stmt>), // name and the statement being exported
+    Module {
+        name: String,
+        body: Vec<Stmt>,
+        confidence: Option<f64>,
     },
 }
 

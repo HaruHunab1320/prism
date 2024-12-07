@@ -1,38 +1,43 @@
-use prism::{Interpreter, value::Value};
+use prism::Interpreter;
 use std::error::Error;
 use std::time::Instant;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let api_key = std::env::var("PRISM_API_KEY").unwrap_or_else(|_| "test_key".to_string());
-    let interpreter = Interpreter::new(api_key);
+    // Initialize the interpreter
+    let interpreter = Interpreter::new();
 
+    // Load and run the Prism version
     let source = r#"
-        // Medical diagnosis example
-        let symptoms = ["fever", "cough", "fatigue"];
-        let severity = "moderate";
-        let duration = "5 days";
+        fn diagnose(symptoms) {
+            let conditions = [
+                { name: "Cold", symptoms: ["fever", "cough", "runny nose"] },
+                { name: "Flu", symptoms: ["fever", "body aches", "fatigue"] },
+                { name: "Allergies", symptoms: ["sneezing", "itchy eyes", "runny nose"] }
+            ];
 
-        // Perform diagnosis
-        let diagnosis = match symptoms {
-            ["fever", "cough", _] if severity == "moderate" => "Common cold",
-            ["fever", "cough", "fatigue"] if duration > "7 days" => "Flu",
-            ["fever", _, _] if severity == "severe" => "Seek immediate medical attention",
-            _ => "Unknown condition"
-        };
-
-        // Return diagnosis
-        diagnosis
+            let matches = [];
+            for condition in conditions {
+                let match_count = 0;
+                for symptom in condition.symptoms {
+                    if symptoms.contains(symptom) {
+                        match_count += 1;
+                    }
+                }
+                if match_count > 0 {
+                    matches.push({ condition: condition.name, confidence: match_count / condition.symptoms.length });
+                }
+            }
+            return matches;
+        }
     "#;
 
-    // Measure Prism execution time
     let start = Instant::now();
-    let prism_results = interpreter.eval(source.to_string()).await?;
+    let prism_results = interpreter.evaluate(source.to_string()).await?;
     let prism_duration = start.elapsed();
 
-    println!("Prism Results:");
-    println!("Diagnosis: {}", prism_results.as_string().unwrap_or_default());
-    println!("Time taken: {:?}", prism_duration);
+    println!("Prism results: {:?}", prism_results);
+    println!("Prism execution time: {:?}", prism_duration);
 
     Ok(())
 }

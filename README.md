@@ -9,23 +9,31 @@ Prism is a modern programming language designed for AI-first development, featur
 - Functions and closures
 - Async/await support
 - Control flow (if/while/for)
-- Error handling
+- Error handling with confidence tracking
 - Expression evaluation
 - Block scoping
 - Basic operators (arithmetic, logical, comparison)
 - String operations
 - Testing infrastructure
+- Method chaining
+- Property access
+- Circular dependency detection
 
-### Module System (In Progress 🚧)
-- Module structure and interfaces defined
-- Basic module registration
-- Standard library module placeholders
+### Module System (Implemented ✅)
+- Module structure and interfaces
+- Module registration and loading
+- Import/export system with confidence propagation
+- Module dependency resolution
+- Circular dependency detection
+- Standard library module structure
+- Module caching
 - TypeScript/WASM integration foundation
 
 ### AI Features (In Progress 🚧)
-- Confidence tracking (partial)
-- Context management (planned)
-- LLM integration (planned)
+- Confidence tracking ✅
+- Context management ✅
+- Confidence propagation ✅
+- LLM integration (in progress)
 - Pattern matching (planned)
 - Medical domain support (planned)
 
@@ -36,13 +44,23 @@ Prism is a modern programming language designed for AI-first development, featur
 - Traits and interfaces
 - Custom types and structs
 
-### Standard Library (Planned 📋)
-- Data structures
-- String manipulation
-- Math functions
-- File I/O
-- Network operations
-- JSON handling
+### Standard Library (In Progress 🚧)
+- Core module ✅
+  - Basic operations
+  - Type utilities
+  - Assertions
+- LLM module (in progress)
+  - Chat completion
+  - Embeddings
+  - Model management
+- Medical module (planned)
+  - Diagnosis helpers
+  - Health record types
+  - FHIR integration
+- Utils module ✅
+  - String manipulation
+  - Math functions
+  - Basic I/O
 
 ## Getting Started
 
@@ -51,7 +69,7 @@ Prism is a modern programming language designed for AI-first development, featur
 - Cargo package manager
 
 ### Installation
-```bash
+bash
 # Clone the repository
 git clone https://github.com/oneirocom/prism.git
 
@@ -63,23 +81,36 @@ cargo build --release
 ### Basic Usage
 ```rust
 // Hello World
-let message = "Hello, World!";
+let message = "Hello, World!" ~> 0.9;
 print(message);
 
-// Function declaration
-fn add(a, b) {
+// Function with confidence
+fn add(a, b) ~> 0.95 {
     return a + b;
 }
 
-// Async function
-async fn fetch_data() {
-    // Async operations here
+// Module definition and import
+module math ~> 0.9 {
+    export fn multiply(a, b) {
+        return a * b;
+    }
 }
 
-// Error handling
-fn safe_divide(a, b) {
+import { multiply } from "math" ~> 0.8;
+let result = multiply(2, 3);  // Combined confidence: 0.9 * 0.8
+
+// Async function with context
+async fn fetch_data() ~> 0.8 {
+    in context "medical" {
+        let response = await llm.analyze("patient symptoms");
+        return response ~> 0.9;
+    }
+}
+
+// Error handling with confidence
+fn safe_divide(a, b) ~> 0.95 {
     if (b == 0) {
-        return null;
+        throw error("Division by zero", confidence: 0.99);
     }
     return a / b;
 }
@@ -98,6 +129,8 @@ prism/
 │   │   ├── lexer.rs   # Lexical analysis
 │   │   ├── parser.rs  # Syntax parsing
 │   │   ├── ast.rs     # Abstract Syntax Tree
+│   │   ├── module.rs  # Module system
+│   │   ├── value.rs   # Value representation
 │   │   ├── stdlib/    # Standard library modules
 │   │   └── ...
 │   └── tests/         # Test suite
@@ -117,3 +150,4 @@ See [ROADMAP.md](ROADMAP.md) for planned features and development timeline.
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+```
