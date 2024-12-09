@@ -3,20 +3,20 @@ let x = 42;
 let y = 10;
 
 // Arithmetic operations
-let result1 = x + y;    // Should output 52
-let result2 = x - y;    // Should output 32
-let result3 = x * y;    // Should output 420
-let result4 = x / y;    // Should output 4.2
+let result1 = x + y;      // Should be 52
+let result2 = x - y;      // Should be 32
+let result3 = x * y;      // Should be 420
+let result4 = x / y;      // Should be 4.2
 
 // String handling
 let message = "Hello, Prism!";
 
 // Multiple operations
 let z = x + y;
-let doubled = z * 2;     // Should output 104
+let doubled = z * 2;      // Should be 104
 
 // Nested arithmetic
-let complex = (x + y) * (x - y);  // Should output 52 * 32 = 1664
+let complex = (x + y) * (x - y);  // Should be 1664
 
 // Print all results
 result1;

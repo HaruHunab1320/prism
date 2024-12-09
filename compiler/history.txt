@@ -7,3 +7,21 @@ x + y;
 let message = "Hello Prism!";
 message;
 exit
+let x = 42;
+x;
+let y = 10;
+x + y;
+x - y;
+x * y; 
+x / y; 
+(x + y) * (x - y); 
+x;
+let z = x + y;
+z * 2; 
+exit
+(x + y) * (x - y);  // Should be 52 * 32 = 1664
+let y = 10;
+let x = 42;
+(x + y) * (x - y);  
+close
+exit

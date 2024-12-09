@@ -94,6 +94,10 @@ impl Interpreter {
                     println!("Found value: {:?}", val);
                     Ok(val)
                 },
+                Expr::Grouping(expr) => {
+                    println!("Evaluating grouped expression: {:?}", expr);
+                    self.evaluate_expression(expr).await
+                },
                 Expr::Binary { left, operator, right } => {
                     println!("Evaluating binary expression: {:?} {:?} {:?}", left, operator, right);
                     let left = self.evaluate_expression(left).await?;
