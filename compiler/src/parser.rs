@@ -80,12 +80,8 @@ impl Parser {
     fn statement(&mut self) -> Result<Stmt> {
         if self.match_token(&[TokenKind::If]) {
             self.if_statement()
-        } else if self.match_token(&[TokenKind::While]) {
-            self.while_statement()
-        } else if self.match_token(&[TokenKind::Return]) {
-            self.return_statement()
         } else if self.match_token(&[TokenKind::LeftBrace]) {
-            Ok(self.block()?)
+            self.block()
         } else {
             self.expression_statement()
         }
@@ -96,38 +92,26 @@ impl Parser {
         let condition = Box::new(self.expression()?);
         self.consume(TokenKind::RightParen, "Expected ')' after if condition.")?;
 
-        let then_branch = Box::new(self.statement()?);
+        let then_branch = Box::new(self.block()?);
         let else_branch = if self.match_token(&[TokenKind::Else]) {
-            Some(Box::new(self.statement()?))
+            Some(Box::new(if self.match_token(&[TokenKind::If]) {
+                self.if_statement()?
+            } else {
+                self.block()?
+            }))
         } else {
             None
         };
 
-        Ok(Stmt::If { condition, then_branch, else_branch })
-    }
-
-    fn while_statement(&mut self) -> Result<Stmt> {
-        self.consume(TokenKind::LeftParen, "Expected '(' after 'while'.")?;
-        let condition = Box::new(self.expression()?);
-        self.consume(TokenKind::RightParen, "Expected ')' after while condition.")?;
-        
-        let body = Box::new(self.statement()?);
-        
-        Ok(Stmt::While { condition, body })
-    }
-
-    fn return_statement(&mut self) -> Result<Stmt> {
-        let value = if !self.check(&TokenKind::Semicolon) {
-            Some(Box::new(self.expression()?))
-        } else {
-            None
-        };
-
-        self.consume(TokenKind::Semicolon, "Expected ';' after return value.")?;
-        Ok(Stmt::Return(value))
+        Ok(Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        })
     }
 
     fn block(&mut self) -> Result<Stmt> {
+        self.consume(TokenKind::LeftBrace, "Expected '{' before block.")?;
         let mut statements = Vec::new();
 
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {

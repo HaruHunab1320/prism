@@ -1,18 +1,23 @@
+#[cfg(feature = "native")]
 use std::path::PathBuf;
+#[cfg(feature = "native")]
 use dotenv::dotenv;
 
 pub fn init() {
-    // Try to load .env from workspace root first
-    let root_env = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join(".env");
-    
-    if root_env.exists() {
-        dotenv::from_path(root_env).ok();
-    } else {
-        // Fallback to default dotenv behavior
-        dotenv().ok();
+    #[cfg(feature = "native")]
+    {
+        // Try to load .env from workspace root first
+        let root_env = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join(".env");
+        
+        if root_env.exists() {
+            dotenv::from_path(root_env).ok();
+        } else {
+            // Fallback to default dotenv behavior
+            dotenv().ok();
+        }
     }
 }
 

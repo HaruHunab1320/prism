@@ -1,0 +1,71 @@
+// =============================================================
+// Control Flow Test Script
+// Tests implementation of if/else statements and boolean operations
+// =============================================================
+
+// -------------------------------------------------------------
+// 1. Basic Variable Setup
+// -------------------------------------------------------------
+let x = 42;
+let y = 10;
+let name = "Prism";
+
+// -------------------------------------------------------------
+// 2. Simple If Statement with Comparison
+// -------------------------------------------------------------
+if x > y {
+    let result = "x is greater than y";
+    result;  // Should print
+}
+
+// -------------------------------------------------------------
+// 3. If-Else Statement with Equality
+// -------------------------------------------------------------
+if x == 10 {
+    let result = "x equals 10";
+} else {
+    let result = "x does not equal 10";
+    result;  // Should print
+}
+
+// -------------------------------------------------------------
+// 4. Multiple Conditions with String Comparison
+// -------------------------------------------------------------
+if name == "Rust" {
+    let result = "Language is Rust";
+} else if name == "Prism" {
+    let result = "Language is Prism";
+    result;  // Should print
+} else {
+    let result = "Unknown language";
+}
+
+// -------------------------------------------------------------
+// 5. Nested If Statements with Multiple Comparisons
+// -------------------------------------------------------------
+if x > 0 {
+    if y < 20 {
+        let result = "x is positive and y is less than 20";
+        result;  // Should print
+    } else {
+        let result = "x is positive but y is not less than 20";
+    }
+}
+
+// -------------------------------------------------------------
+// 6. Complex Conditions
+// -------------------------------------------------------------
+if x > y && name == "Prism" {
+    let result = "Complex condition is true";
+    result;  // Should print
+}
+
+// -------------------------------------------------------------
+// 7. String Operations in Conditions
+// -------------------------------------------------------------
+let greeting = "Hello";
+let language = "Prism";
+if greeting + " " + language == "Hello Prism" {
+    let result = "String concatenation works in conditions";
+    result;  // Should print
+}

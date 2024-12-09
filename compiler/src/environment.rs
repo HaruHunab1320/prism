@@ -25,6 +25,10 @@ impl Environment {
         }
     }
 
+    pub fn get_enclosing(&self) -> Option<Arc<RwLock<Environment>>> {
+        self.enclosing.clone()
+    }
+
     pub fn define(&mut self, name: String, value: Value) -> Result<()> {
         self.values.insert(name, value);
         Ok(())

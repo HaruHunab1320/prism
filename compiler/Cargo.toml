@@ -6,18 +6,28 @@ description = "A modern programming language designed for AI-first development"
 authors = ["Oneiro Team"]
 license = "MIT"
 
+[lib]
+name = "prism"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "prism-cli"
+path = "src/main.rs"
+required-features = ["native"]
+
 [dependencies]
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.0", features = ["full"], optional = true }
 parking_lot = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-dotenv = "0.15"
-env_logger = "0.10"
+dotenv = { version = "0.15", optional = true }
+env_logger = { version = "0.10", optional = true }
 log = "0.4"
 async-trait = "0.1"
 thiserror = "1.0"
-rustyline = "12.0"
-colored = "2.0"
+rustyline = { version = "12.0", optional = true }
+colored = { version = "2.0", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 
 [dev-dependencies]
@@ -25,14 +35,14 @@ tokio-test = "0.4"
 
 [features]
 default = ["native"]
-native = []
-wasm = ["wasm-bindgen"]
-
-[lib]
-name = "prism"
-path = "src/lib.rs"
-
-[[bin]]
-name = "prism"
-path = "src/main.rs"
+native = [
+    "tokio",
+    "rustyline",
+    "dotenv",
+    "env_logger",
+    "colored"
+]
+wasm = [
+    "wasm-bindgen"
+]
  

@@ -33,9 +33,7 @@ impl Interpreter {
             match stmt {
                 Stmt::Expression(expr) => {
                     println!("Executing expression: {:?}", expr);
-                    let result = self.evaluate_expression(expr).await?;
-                    println!("Expression result: {:?}", result);
-                    Ok(result)
+                    self.evaluate_expression(expr).await
                 },
                 Stmt::Let(name, initializer) => {
                     println!("Declaring variable: {} with initializer: {:?}", name, initializer);
@@ -49,10 +47,46 @@ impl Interpreter {
                     self.environment.write().define(name.clone(), value.clone())?;
                     Ok(value)
                 },
+                Stmt::If { condition, then_branch, else_branch } => {
+                    println!("Executing if statement with condition: {:?}", condition);
+                    let cond_value = self.evaluate_expression(condition).await?;
+                    
+                    match cond_value.kind {
+                        ValueKind::Boolean(true) => {
+                            println!("Condition is true, executing then branch");
+                            self.execute_statement(then_branch).await
+                        },
+                        ValueKind::Boolean(false) => {
+                            if let Some(else_stmt) = else_branch {
+                                println!("Condition is false, executing else branch");
+                                self.execute_statement(else_stmt).await
+                            } else {
+                                println!("Condition is false, no else branch");
+                                Ok(Value::new(ValueKind::Nil))
+                            }
+                        },
+                        _ => Err(PrismError::RuntimeError(format!("Condition must be a boolean, got {:?}", cond_value.kind))),
+                    }
+                },
                 Stmt::Block(statements) => {
+                    println!("Executing block with {} statements", statements.len());
+                    // Create a new environment for this block
+                    let previous = Arc::clone(&self.environment);
+                    self.environment = Arc::new(RwLock::new(Environment::with_enclosing(previous)));
+                    
                     let mut result = Value::new(ValueKind::Nil);
                     for stmt in statements {
                         result = self.execute_statement(stmt).await?;
+                    }
+                    
+                    // Restore the previous environment
+                    let enclosing = {
+                        let env = self.environment.read();
+                        env.get_enclosing()
+                    };
+                    
+                    if let Some(parent_env) = enclosing {
+                        self.environment = parent_env;
                     }
                     Ok(result)
                 },
@@ -105,18 +139,57 @@ impl Interpreter {
                     println!("Binary operands: {:?} {:?}", left, right);
                     
                     match (&left.kind, &right.kind) {
+                        // Numeric operations
                         (ValueKind::Number(l), ValueKind::Number(r)) => {
                             let result = match operator.kind {
-                                TokenKind::Plus => l + r,
-                                TokenKind::Minus => l - r,
-                                TokenKind::Star => l * r,
-                                TokenKind::Slash => l / r,
+                                TokenKind::Plus => Value::new(ValueKind::Number(l + r)),
+                                TokenKind::Minus => Value::new(ValueKind::Number(l - r)),
+                                TokenKind::Star => Value::new(ValueKind::Number(l * r)),
+                                TokenKind::Slash => Value::new(ValueKind::Number(l / r)),
+                                // Comparison operators
+                                TokenKind::Greater => Value::new(ValueKind::Boolean(l > r)),
+                                TokenKind::GreaterEqual => Value::new(ValueKind::Boolean(l >= r)),
+                                TokenKind::Less => Value::new(ValueKind::Boolean(l < r)),
+                                TokenKind::LessEqual => Value::new(ValueKind::Boolean(l <= r)),
+                                TokenKind::EqualEqual => Value::new(ValueKind::Boolean(l == r)),
+                                TokenKind::BangEqual => Value::new(ValueKind::Boolean(l != r)),
                                 _ => return Err(PrismError::RuntimeError("Invalid operator for numbers".to_string())),
                             };
                             println!("Binary result: {:?}", result);
-                            Ok(Value::new(ValueKind::Number(result)))
+                            Ok(result)
                         },
-                        _ => Err(PrismError::RuntimeError(format!("Operands must be numbers, got {:?} and {:?}", left.kind, right.kind))),
+                        // Boolean operations
+                        (ValueKind::Boolean(l), ValueKind::Boolean(r)) => {
+                            let result = match operator.kind {
+                                TokenKind::And => Value::new(ValueKind::Boolean(*l && *r)),
+                                TokenKind::Or => Value::new(ValueKind::Boolean(*l || *r)),
+                                TokenKind::EqualEqual => Value::new(ValueKind::Boolean(l == r)),
+                                TokenKind::BangEqual => Value::new(ValueKind::Boolean(l != r)),
+                                _ => return Err(PrismError::RuntimeError("Invalid operator for booleans".to_string())),
+                            };
+                            println!("Binary result: {:?}", result);
+                            Ok(result)
+                        },
+                        // String operations
+                        (ValueKind::String(l), ValueKind::String(r)) => {
+                            let result = match operator.kind {
+                                TokenKind::Plus => Value::new(ValueKind::String(format!("{}{}", l, r))),
+                                TokenKind::EqualEqual => Value::new(ValueKind::Boolean(l == r)),
+                                TokenKind::BangEqual => Value::new(ValueKind::Boolean(l != r)),
+                                _ => return Err(PrismError::RuntimeError("Invalid operator for strings".to_string())),
+                            };
+                            println!("Binary result: {:?}", result);
+                            Ok(result)
+                        },
+                        // Equality for any type
+                        _ => match operator.kind {
+                            TokenKind::EqualEqual => Ok(Value::new(ValueKind::Boolean(left.kind == right.kind))),
+                            TokenKind::BangEqual => Ok(Value::new(ValueKind::Boolean(left.kind != right.kind))),
+                            _ => Err(PrismError::RuntimeError(format!(
+                                "Invalid operation between {:?} and {:?}",
+                                left.kind, right.kind
+                            ))),
+                        },
                     }
                 },
                 Expr::Assign { name, value } => {

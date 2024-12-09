@@ -1,14 +1,20 @@
+#[cfg(feature = "native")]
 use rustyline::DefaultEditor;
+#[cfg(feature = "native")]
 use rustyline::error::ReadlineError;
+#[cfg(feature = "native")]
 use crate::interpreter::Interpreter;
 use crate::error::{Result, PrismError};
+#[cfg(feature = "native")]
 use crate::value::Value;
 
+#[cfg(feature = "native")]
 pub struct Repl {
     interpreter: Interpreter,
     editor: DefaultEditor,
 }
 
+#[cfg(feature = "native")]
 impl Repl {
     pub fn new() -> Result<Self> {
         let mut editor = DefaultEditor::new().map_err(|e| PrismError::RuntimeError(e.to_string()))?;
@@ -76,5 +82,15 @@ impl Repl {
         println!("  let x = 42 ~> 0.9      - Variable with confidence");
         println!("  let y = \"hi\" @ \"greeting\" - Variable with context");
         println!("\nFor more information, visit: https://github.com/oneirocom/prism");
+    }
+}
+
+#[cfg(not(feature = "native"))]
+pub struct Repl;
+
+#[cfg(not(feature = "native"))]
+impl Repl {
+    pub fn new() -> Result<Self> {
+        Err(PrismError::RuntimeError("REPL is not available in WASM builds".to_string()))
     }
 } 

@@ -1,9 +1,15 @@
+#[cfg(feature = "native")]
 use std::env;
+#[cfg(feature = "native")]
 use std::fs;
+#[cfg(feature = "native")]
 use prism::interpreter::Interpreter;
+#[cfg(feature = "native")]
 use prism::repl::Repl;
+#[cfg(feature = "native")]
 use prism::error::Result;
 
+#[cfg(feature = "native")]
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize environment
@@ -47,4 +53,9 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(not(feature = "native"))]
+fn main() {
+    panic!("Binary is only available with native feature enabled");
 }
