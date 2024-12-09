@@ -1,0 +1,92 @@
+// =============================================================
+// Prism Language Feature Showcase
+// This script demonstrates all currently working features
+// =============================================================
+
+// -------------------------------------------------------------
+// 1. Basic Variable Declarations
+// -------------------------------------------------------------
+let x = 42;              // Integer
+let y = 3.14;           // Float
+let name = "Prism";     // String
+let empty = nil;        // Nil value
+
+// -------------------------------------------------------------
+// 2. Basic Arithmetic Operations
+// -------------------------------------------------------------
+
+// Addition
+let sum = x + 10;           // 52
+let float_sum = y + 2.0;    // 5.14
+
+// Subtraction
+let difference = x - 12;    // 30
+let float_diff = y - 1.14;  // 2.0
+
+// Multiplication
+let product = x * 2;        // 84
+let float_prod = y * 2.0;   // 6.28
+
+// Division
+let quotient = x / 2;       // 21
+let float_quot = y / 2.0;   // 1.57
+
+// -------------------------------------------------------------
+// 3. Complex Arithmetic Expressions
+// -------------------------------------------------------------
+
+// Operator precedence
+let precedence1 = 2 + 3 * 4;        // 14 (not 20)
+let precedence2 = (2 + 3) * 4;      // 20 (not 14)
+
+// Multiple operations
+let complex1 = (x + y) * (x - y);   // Complex calculation
+let complex2 = x * y + (x / y);     // Mixed operations
+
+// Nested expressions
+let nested = ((x + 10) * (y + 5)) / 2;
+
+// -------------------------------------------------------------
+// 4. String Operations
+// -------------------------------------------------------------
+
+let greeting = "Hello";
+let language = "Prism";
+let version = "0.9.0";
+
+// -------------------------------------------------------------
+// 5. Variable Reuse and Updates
+// -------------------------------------------------------------
+
+let a = 10;
+let b = a + 5;     // Using previous variable
+let c = b * 2;     // Chaining calculations
+
+// Update variables
+let counter = 1;
+let counter = counter + 1;  // Variable shadowing
+
+// -------------------------------------------------------------
+// 6. Print Results
+// -------------------------------------------------------------
+
+// Basic values
+x;          // 42
+y;          // 3.14
+name;       // "Prism"
+empty;      // nil
+
+// Arithmetic results
+sum;        // 52
+product;    // 84
+quotient;   // 21
+
+// Complex expressions
+complex1;   // Result of (x + y) * (x - y)
+complex2;   // Result of x * y + (x / y)
+nested;     // Result of ((x + 10) * (y + 5)) / 2
+
+// String values
+greeting;   // "Hello"
+language;   // "Prism"
+version;    // "0.9.0" 
