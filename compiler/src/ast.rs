@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use crate::interpreter::Interpreter;
 use crate::token::Token;
-use crate::value::Value;
+use crate::value::{Value, ValueKind};
 
 pub type AsyncResult<T> = Pin<Box<dyn Future<Output = Result<T, Box<dyn Error + Send + Sync>>> + Send + Sync>>;
 pub type AsyncFn = Arc<dyn Fn(&Interpreter, Vec<Value>) -> AsyncResult<Value> + Send + Sync>;
@@ -52,6 +52,10 @@ pub enum Expr {
         body: Box<Expr>,
     },
     Grouping(Box<Expr>),
+    ModuleAccess {
+        module: String,
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -97,6 +101,10 @@ pub enum Stmt {
         body: Vec<Stmt>,
         confidence: Option<f64>,
     },
+    ModuleAccess {
+        module_name: String,
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -119,4 +127,23 @@ pub enum BinaryOp {
     GreaterEqual,
     And,
     Or,
+}
+
+impl From<&Stmt> for Expr {
+    fn from(stmt: &Stmt) -> Self {
+        match stmt {
+            Stmt::Expression(expr) => *expr.clone(),
+            Stmt::Let(name, Some(expr)) => Expr::Assign {
+                name: name.clone(),
+                value: expr.clone(),
+            },
+            Stmt::Let(name, None) => Expr::Variable(name.clone()),
+            Stmt::Block(stmts) => Expr::Grouping(Box::new(
+                stmts.last()
+                    .map(|s| Self::from(s))
+                    .unwrap_or(Expr::Literal(Value::new(ValueKind::Nil)))
+            )),
+            _ => Expr::Literal(Value::new(ValueKind::Nil)),
+        }
+    }
 }

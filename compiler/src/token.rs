@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     // Single-character tokens
@@ -11,7 +13,7 @@ pub enum TokenKind {
     Equal, EqualEqual,
     Greater, GreaterEqual,
     Less, LessEqual,
-    Arrow, // =>
+    Arrow,      // =>
     Confidence, // ~>
 
     // Literals
@@ -23,9 +25,9 @@ pub enum TokenKind {
     And, Class, Else, False,
     Fun, For, If, Nil, Or,
     Return, Super, This, True,
-    Let, While, Import, Export,
-    From, As, Module, Context,
-    Async,
+    Let, While, Break, Continue,
+    Import, Export, From, Module,
+    In, Context, As, Async,
 
     EOF,
 }
@@ -39,6 +41,16 @@ pub struct Token {
 
 impl Token {
     pub fn new(kind: TokenKind, lexeme: String, line: usize) -> Self {
-        Self { kind, lexeme, line }
+        Self {
+            kind,
+            lexeme,
+            line,
+        }
+    }
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?} {}", self.kind, self.lexeme)
     }
 } 

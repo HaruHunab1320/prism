@@ -1,38 +1,28 @@
 use prism::Interpreter;
-use std::error::Error;
+use prism::error::Result;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    // Initialize the interpreter
-    let interpreter = Interpreter::new();
-
-    // Load the medical diagnosis program
+async fn main() -> Result<()> {
+    let mut interpreter = Interpreter::new();
+    
     let source = r#"
-        fn diagnose(symptoms) {
-            let conditions = [
-                { name: "Cold", symptoms: ["fever", "cough", "runny nose"] },
-                { name: "Flu", symptoms: ["fever", "body aches", "fatigue"] },
-                { name: "Allergies", symptoms: ["sneezing", "itchy eyes", "runny nose"] }
-            ];
-
-            let matches = [];
-            for condition in conditions {
-                let match_count = 0;
-                for symptom in condition.symptoms {
-                    if symptoms.contains(symptom) {
-                        match_count += 1;
-                    }
-                }
-                if match_count > 0 {
-                    matches.push({ condition: condition.name, confidence: match_count / condition.symptoms.length });
+        module medical ~> 0.9 {
+            export fn diagnose(symptoms: string) -> string ~> 0.8 {
+                // Simplified diagnosis logic
+                if symptoms.contains("fever") {
+                    return "Possible flu" ~> 0.7;
+                } else {
+                    return "Unknown condition" ~> 0.5;
                 }
             }
-            return matches;
         }
+
+        import { diagnose } from "medical";
+        let result = diagnose("high fever and cough");
+        print(result);
     "#;
 
     let result = interpreter.evaluate(source.to_string()).await?;
     println!("Result: {:?}", result);
-
     Ok(())
 }

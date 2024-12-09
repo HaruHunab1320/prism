@@ -1,104 +1,125 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
-use std::error::Error;
-use crate::value::Value;
+use std::sync::Arc;
+use parking_lot::RwLock;
 use crate::error::{PrismError, Result};
-use crate::module::Module;
+use crate::value::Value;
 
 #[derive(Debug)]
 pub struct Environment {
-    values: RwLock<HashMap<String, Value>>,
-    enclosing: Option<Arc<Environment>>,
-    current_module: Option<Arc<RwLock<Module>>>,
+    values: HashMap<String, Value>,
+    enclosing: Option<Arc<RwLock<Environment>>>,
 }
 
 impl Environment {
     pub fn new() -> Self {
         Self {
-            values: RwLock::new(HashMap::new()),
+            values: HashMap::new(),
             enclosing: None,
-            current_module: None,
         }
     }
 
-    pub fn with_enclosing(enclosing: Arc<Environment>) -> Self {
+    pub fn with_enclosing(enclosing: Arc<RwLock<Environment>>) -> Self {
         Self {
-            values: RwLock::new(HashMap::new()),
+            values: HashMap::new(),
             enclosing: Some(enclosing),
-            current_module: None,
         }
     }
 
-    pub fn with_module(module: Arc<RwLock<Module>>) -> Self {
-        Self {
-            values: RwLock::new(HashMap::new()),
-            enclosing: None,
-            current_module: Some(module),
-        }
+    pub fn define(&mut self, name: String, value: Value) -> Result<()> {
+        self.values.insert(name, value);
+        Ok(())
     }
 
-    pub fn get_module(&self) -> Option<Arc<RwLock<Module>>> {
-        self.current_module.clone().or_else(|| {
-            self.enclosing.as_ref().and_then(|env| env.get_module())
-        })
-    }
-
-    pub fn set_module(&mut self, module: Arc<RwLock<Module>>) {
-        self.current_module = Some(module);
-    }
-
-    pub fn define(&self, name: String, value: Value) {
-        self.values.write().unwrap().insert(name, value);
-    }
-
-    pub fn get(&self, name: &str) -> Option<Value> {
-        if let Some(value) = self.values.read().unwrap().get(name) {
-            Some(value.clone())
+    pub fn get(&self, name: &str) -> Result<Value> {
+        if let Some(value) = self.values.get(name) {
+            Ok(value.clone())
         } else if let Some(enclosing) = &self.enclosing {
-            enclosing.get(name)
+            enclosing.read().get(name)
         } else {
-            None
+            Err(PrismError::UndefinedVariable(name.to_string()))
         }
     }
 
-    pub fn assign(&self, name: &str, value: Value) -> Result<()> {
-        if self.values.read().unwrap().contains_key(name) {
-            self.values.write().unwrap().insert(name.to_string(), value);
+    pub fn assign(&mut self, name: &str, value: Value) -> Result<()> {
+        if self.values.contains_key(name) {
+            self.values.insert(name.to_string(), value);
             Ok(())
         } else if let Some(enclosing) = &self.enclosing {
-            enclosing.assign(name, value)
+            enclosing.write().assign(name, value)
         } else {
-            Err(Box::new(PrismError::UndefinedVariable(name.to_string())) as Box<dyn Error + Send + Sync>)
+            Err(PrismError::UndefinedVariable(name.to_string()))
         }
     }
+}
 
-    pub fn get_at(&self, distance: usize, name: &str) -> Result<Value> {
-        if distance == 0 {
-            Ok(self.values
-                .read()
-                .unwrap()
-                .get(name)
-                .cloned()
-                .ok_or_else(|| Box::new(PrismError::UndefinedVariable(name.to_string())) as Box<dyn Error + Send + Sync>)?)
-        } else if let Some(enclosing) = &self.enclosing {
-            enclosing.get_at(distance - 1, name)
-        } else {
-            Err(Box::new(PrismError::UndefinedVariable(name.to_string())) as Box<dyn Error + Send + Sync>)
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::value::ValueKind;
+
+    #[test]
+    fn test_environment() {
+        let mut env = Environment::new();
+        env.define("x".to_string(), Value::new(ValueKind::Number(42.0)))
+            .unwrap();
+        assert_eq!(
+            env.get("x").unwrap().kind,
+            ValueKind::Number(42.0)
+        );
     }
 
-    pub fn assign_at(&self, distance: usize, name: &str, value: Value) -> Result<()> {
-        if distance == 0 {
-            if self.values.read().unwrap().contains_key(name) {
-                self.values.write().unwrap().insert(name.to_string(), value);
-                Ok(())
-            } else {
-                Err(Box::new(PrismError::UndefinedVariable(name.to_string())) as Box<dyn Error + Send + Sync>)
-            }
-        } else if let Some(enclosing) = &self.enclosing {
-            enclosing.assign_at(distance - 1, name, value)
-        } else {
-            Err(Box::new(PrismError::UndefinedVariable(name.to_string())) as Box<dyn Error + Send + Sync>)
-        }
+    #[test]
+    fn test_environment_with_enclosing() {
+        let mut global = Environment::new();
+        global
+            .define("x".to_string(), Value::new(ValueKind::Number(42.0)))
+            .unwrap();
+        let global = Arc::new(RwLock::new(global));
+
+        let mut local = Environment::with_enclosing(global);
+        local
+            .define("y".to_string(), Value::new(ValueKind::Number(24.0)))
+            .unwrap();
+
+        assert_eq!(
+            local.get("x").unwrap().kind,
+            ValueKind::Number(42.0)
+        );
+        assert_eq!(
+            local.get("y").unwrap().kind,
+            ValueKind::Number(24.0)
+        );
+    }
+
+    #[test]
+    fn test_environment_assign() {
+        let mut env = Environment::new();
+        env.define("x".to_string(), Value::new(ValueKind::Number(42.0)))
+            .unwrap();
+        env.assign("x", Value::new(ValueKind::Number(24.0)))
+            .unwrap();
+        assert_eq!(
+            env.get("x").unwrap().kind,
+            ValueKind::Number(24.0)
+        );
+    }
+
+    #[test]
+    fn test_environment_assign_enclosing() {
+        let mut global = Environment::new();
+        global
+            .define("x".to_string(), Value::new(ValueKind::Number(42.0)))
+            .unwrap();
+        let global = Arc::new(RwLock::new(global));
+
+        let mut local = Environment::with_enclosing(global.clone());
+        local
+            .assign("x", Value::new(ValueKind::Number(24.0)))
+            .unwrap();
+
+        assert_eq!(
+            global.read().get("x").unwrap().kind,
+            ValueKind::Number(24.0)
+        );
     }
 }

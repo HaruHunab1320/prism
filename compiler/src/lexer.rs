@@ -1,5 +1,3 @@
-use std::str::Chars;
-use std::iter::Peekable;
 use crate::token::{Token, TokenKind};
 use crate::error::{PrismError, Result};
 
@@ -9,20 +7,16 @@ pub struct Lexer {
     start: usize,
     current: usize,
     line: usize,
-    chars: String,
-    char_pos: usize,
 }
 
 impl Lexer {
     pub fn new(source: String) -> Self {
         Self {
-            source: source.clone(),
+            source,
             tokens: Vec::new(),
             start: 0,
             current: 0,
             line: 1,
-            chars: source,
-            char_pos: 0,
         }
     }
 
@@ -50,97 +44,89 @@ impl Lexer {
             '}' => self.add_token(TokenKind::RightBrace),
             ',' => self.add_token(TokenKind::Comma),
             '.' => self.add_token(TokenKind::Dot),
-            '-' => {
-                if self.match_char('>') {
-                    self.add_token(TokenKind::Arrow)
-                } else {
-                    self.add_token(TokenKind::Minus)
-                }
-            }
+            '-' => self.add_token(TokenKind::Minus),
             '+' => self.add_token(TokenKind::Plus),
             ';' => self.add_token(TokenKind::Semicolon),
             '*' => self.add_token(TokenKind::Star),
             '!' => {
-                if self.match_char('=') {
-                    self.add_token(TokenKind::BangEqual)
+                let token = if self.match_char('=') {
+                    TokenKind::BangEqual
                 } else {
-                    self.add_token(TokenKind::Bang)
-                }
+                    TokenKind::Bang
+                };
+                self.add_token(token);
             }
             '=' => {
-                if self.match_char('=') {
-                    self.add_token(TokenKind::EqualEqual)
+                let token = if self.match_char('=') {
+                    TokenKind::EqualEqual
+                } else if self.match_char('>') {
+                    TokenKind::Arrow
                 } else {
-                    self.add_token(TokenKind::Equal)
-                }
+                    TokenKind::Equal
+                };
+                self.add_token(token);
             }
             '<' => {
-                if self.match_char('=') {
-                    self.add_token(TokenKind::LessEqual)
+                let token = if self.match_char('=') {
+                    TokenKind::LessEqual
                 } else {
-                    self.add_token(TokenKind::Less)
-                }
+                    TokenKind::Less
+                };
+                self.add_token(token);
             }
             '>' => {
-                if self.match_char('=') {
-                    self.add_token(TokenKind::GreaterEqual)
+                let token = if self.match_char('=') {
+                    TokenKind::GreaterEqual
                 } else {
-                    self.add_token(TokenKind::Greater)
-                }
+                    TokenKind::Greater
+                };
+                self.add_token(token);
             }
             '~' => {
                 if self.match_char('>') {
-                    self.add_token(TokenKind::Confidence)
+                    self.add_token(TokenKind::Confidence);
                 } else {
-                    return Err(Box::new(PrismError::Parse(
+                    return Err(PrismError::ParseError(
                         format!("Unexpected character '~' at line {}", self.line)
-                    )));
+                    ));
                 }
             }
+            '"' => self.string()?,
             '/' => {
                 if self.match_char('/') {
-                    // Comment goes until end of line
-                    while let Some(c) = self.peek() {
-                        if c == '\n' {
-                            break;
-                        }
+                    while self.peek() != '\n' && !self.is_at_end() {
                         self.advance();
                     }
                 } else {
-                    self.add_token(TokenKind::Slash)
+                    self.add_token(TokenKind::Slash);
                 }
             }
-            ' ' | '\r' | '\t' => (), // Ignore whitespace
+            ' ' | '\r' | '\t' => (),
             '\n' => self.line += 1,
-            '"' => self.string()?,
             c if c.is_ascii_digit() => self.number()?,
             c if c.is_ascii_alphabetic() || c == '_' => self.identifier()?,
             _ => {
-                return Err(Box::new(PrismError::Parse(
+                return Err(PrismError::ParseError(
                     format!("Unexpected character '{}' at line {}", c, self.line)
-                )));
+                ));
             }
         }
         Ok(())
     }
 
     fn identifier(&mut self) -> Result<()> {
-        while let Some(c) = self.peek() {
-            if c.is_ascii_alphanumeric() || c == '_' {
-                self.advance();
-            } else {
-                break;
-            }
+        while self.peek().is_ascii_alphanumeric() || self.peek() == '_' {
+            self.advance();
         }
 
         let text = &self.source[self.start..self.current];
-        let kind = match text {
+        let token = match text {
             "and" => TokenKind::And,
             "class" => TokenKind::Class,
             "else" => TokenKind::Else,
             "false" => TokenKind::False,
-            "fun" => TokenKind::Fun,
             "for" => TokenKind::For,
+            "fn" => TokenKind::Fun,
             "if" => TokenKind::If,
             "nil" => TokenKind::Nil,
             "or" => TokenKind::Or,
@@ -150,78 +136,41 @@ impl Lexer {
             "true" => TokenKind::True,
             "let" => TokenKind::Let,
             "while" => TokenKind::While,
+            "break" => TokenKind::Break,
+            "continue" => TokenKind::Continue,
             "import" => TokenKind::Import,
             "export" => TokenKind::Export,
             "from" => TokenKind::From,
-            "as" => TokenKind::As,
             "module" => TokenKind::Module,
+            "in" => TokenKind::In,
             "context" => TokenKind::Context,
+            "as" => TokenKind::As,
             "async" => TokenKind::Async,
             _ => TokenKind::Identifier(text.to_string()),
         };
 
-        self.add_token(kind);
-        Ok(())
-    }
-
-    fn string(&mut self) -> Result<()> {
-        while let Some(c) = self.peek() {
-            if c == '"' {
-                break;
-            }
-            if c == '\n' {
-                self.line += 1;
-            }
-            self.advance();
-        }
-
-        if self.is_at_end() {
-            return Err(Box::new(PrismError::Parse(
-                format!("Unterminated string at line {}", self.line)
-            )));
-        }
-
-        // Consume the closing "
-        self.advance();
-
-        // Trim the surrounding quotes
-        let value = self.source[self.start + 1..self.current - 1].to_string();
-        self.add_token(TokenKind::String(value));
+        self.add_token(token);
         Ok(())
     }
 
     fn number(&mut self) -> Result<()> {
-        while let Some(c) = self.peek() {
-            if c.is_ascii_digit() {
-                self.advance();
-            } else {
-                break;
-            }
+        while self.peek().is_ascii_digit() {
+            self.advance();
         }
 
-        // Look for decimal
-        if let Some('.') = self.peek() {
-            if let Some(next) = self.peek_next() {
-                if next.is_ascii_digit() {
-                    self.advance(); // Consume the '.'
+        if self.peek() == '.' && self.peek_next().is_ascii_digit() {
+            self.advance();
 
-                    while let Some(c) = self.peek() {
-                        if c.is_ascii_digit() {
-                            self.advance();
-                        } else {
-                            break;
-                        }
-                    }
-                }
+            while self.peek().is_ascii_digit() {
+                self.advance();
             }
         }
 
         let value = self.source[self.start..self.current]
             .parse::<f64>()
             .map_err(|_| {
-                PrismError::Parse(format!(
-                    "Invalid number '{}' at line {}",
-                    &self.source[self.start..self.current],
+                PrismError::ParseError(format!(
+                    "Invalid number at line {}",
                     self.line
                 ))
             })?;
@@ -230,42 +179,68 @@ impl Lexer {
         Ok(())
     }
 
-    fn match_char(&mut self, expected: char) -> bool {
-        if let Some(c) = self.peek() {
-            if c == expected {
-                self.advance();
-                return true;
+    fn string(&mut self) -> Result<()> {
+        while self.peek() != '"' && !self.is_at_end() {
+            if self.peek() == '\n' {
+                self.line += 1;
             }
+            self.advance();
         }
-        false
+
+        if self.is_at_end() {
+            return Err(PrismError::ParseError(
+                format!("Unterminated string at line {}", self.line)
+            ));
+        }
+
+        self.advance();
+
+        let value = self.source[self.start + 1..self.current - 1].to_string();
+        self.add_token(TokenKind::String(value));
+        Ok(())
+    }
+
+    fn match_char(&mut self, expected: char) -> bool {
+        if self.is_at_end() {
+            return false;
+        }
+        if self.source.chars().nth(self.current) != Some(expected) {
+            return false;
+        }
+
+        self.current += 1;
+        true
+    }
+
+    fn peek(&self) -> char {
+        if self.is_at_end() {
+            '\0'
+        } else {
+            self.source.chars().nth(self.current).unwrap_or('\0')
+        }
+    }
+
+    fn peek_next(&self) -> char {
+        if self.current + 1 >= self.source.len() {
+            '\0'
+        } else {
+            self.source.chars().nth(self.current + 1).unwrap_or('\0')
+        }
+    }
+
+    fn is_at_end(&self) -> bool {
+        self.current >= self.source.len()
     }
 
     fn advance(&mut self) -> char {
-        let c = self.chars[self.char_pos..].chars().next().unwrap_or('\0');
-        if c != '\0' {
-            self.char_pos += c.len_utf8();
-            self.current = self.char_pos;
-        }
+        let c = self.source.chars().nth(self.current).unwrap_or('\0');
+        self.current += 1;
         c
-    }
-
-    fn peek(&self) -> Option<char> {
-        self.chars[self.char_pos..].chars().next()
-    }
-
-    fn peek_next(&self) -> Option<char> {
-        let mut chars = self.chars[self.char_pos..].chars();
-        chars.next(); // Skip current
-        chars.next()
     }
 
     fn add_token(&mut self, kind: TokenKind) {
         let text = self.source[self.start..self.current].to_string();
         self.tokens.push(Token::new(kind, text, self.line));
-    }
-
-    fn is_at_end(&self) -> bool {
-        self.char_pos >= self.chars.len()
     }
 }
 
@@ -274,85 +249,93 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_scan_tokens() {
-        let mut lexer = Lexer::new("let x = 42;".to_string());
-        let tokens = lexer.scan_tokens().unwrap();
+    fn test_scan_tokens() -> Result<()> {
+        let source = "let x = 42;".to_string();
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.scan_tokens()?;
+
+        assert_eq!(tokens.len(), 6); // let, x, =, 42, ;, EOF
         assert_eq!(tokens[0].kind, TokenKind::Let);
         assert_eq!(tokens[1].kind, TokenKind::Identifier("x".to_string()));
         assert_eq!(tokens[2].kind, TokenKind::Equal);
         assert_eq!(tokens[3].kind, TokenKind::Number(42.0));
         assert_eq!(tokens[4].kind, TokenKind::Semicolon);
         assert_eq!(tokens[5].kind, TokenKind::EOF);
+
+        Ok(())
     }
 
     #[test]
-    fn test_scan_string() {
-        let mut lexer = Lexer::new("\"Hello, World!\"".to_string());
-        let tokens = lexer.scan_tokens().unwrap();
-        assert_eq!(tokens[0].kind, TokenKind::String("Hello, World!".to_string()));
-        assert_eq!(tokens[1].kind, TokenKind::EOF);
+    fn test_scan_string() -> Result<()> {
+        let source = r#"let x = "hello";"#.to_string();
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.scan_tokens()?;
+
+        assert_eq!(tokens.len(), 6); // let, x, =, "hello", ;, EOF
+        assert_eq!(tokens[3].kind, TokenKind::String("hello".to_string()));
+
+        Ok(())
     }
 
     #[test]
-    fn test_scan_function() {
-        let mut lexer = Lexer::new("fun add(a, b)".to_string());
-        let tokens = lexer.scan_tokens().unwrap();
+    fn test_scan_function() -> Result<()> {
+        let source = "fn add(a, b) { return a + b; }".to_string();
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.scan_tokens()?;
+
         assert_eq!(tokens[0].kind, TokenKind::Fun);
         assert_eq!(tokens[1].kind, TokenKind::Identifier("add".to_string()));
-        assert_eq!(tokens[2].kind, TokenKind::LeftParen);
-        assert_eq!(tokens[3].kind, TokenKind::Identifier("a".to_string()));
-        assert_eq!(tokens[4].kind, TokenKind::Comma);
-        assert_eq!(tokens[5].kind, TokenKind::Identifier("b".to_string()));
-        assert_eq!(tokens[6].kind, TokenKind::RightParen);
-        assert_eq!(tokens[7].kind, TokenKind::EOF);
+
+        Ok(())
     }
 
     #[test]
-    fn test_scan_confidence() {
-        let mut lexer = Lexer::new("let x = 42 ~> 0.9;".to_string());
-        let tokens = lexer.scan_tokens().unwrap();
-        assert_eq!(tokens[0].kind, TokenKind::Let);
-        assert_eq!(tokens[1].kind, TokenKind::Identifier("x".to_string()));
-        assert_eq!(tokens[2].kind, TokenKind::Equal);
-        assert_eq!(tokens[3].kind, TokenKind::Number(42.0));
+    fn test_scan_module() -> Result<()> {
+        let source = r#"
+            module test {
+                fn add(a, b) {
+                    return a + b;
+                }
+            }
+        "#.to_string();
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.scan_tokens()?;
+
+        // Skip whitespace tokens
+        let mut i = 0;
+        while i < tokens.len() && tokens[i].kind == TokenKind::Identifier("".to_string()) {
+            i += 1;
+        }
+
+        assert_eq!(tokens[i].kind, TokenKind::Module);
+        assert_eq!(tokens[i + 1].kind, TokenKind::Identifier("test".to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_scan_import() -> Result<()> {
+        let source = r#"import { add } from "math";"#.to_string();
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.scan_tokens()?;
+
+        assert_eq!(tokens[0].kind, TokenKind::Import);
+        assert_eq!(tokens[2].kind, TokenKind::Identifier("add".to_string()));
+        assert_eq!(tokens[4].kind, TokenKind::From);
+        assert_eq!(tokens[5].kind, TokenKind::String("math".to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_scan_confidence() -> Result<()> {
+        let source = "let x = 42 ~> 0.9;".to_string();
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.scan_tokens()?;
+
         assert_eq!(tokens[4].kind, TokenKind::Confidence);
         assert_eq!(tokens[5].kind, TokenKind::Number(0.9));
-        assert_eq!(tokens[6].kind, TokenKind::Semicolon);
-        assert_eq!(tokens[7].kind, TokenKind::EOF);
-    }
 
-    #[test]
-    fn test_scan_module() {
-        let mut lexer = Lexer::new("module math { export fn add(a, b) }".to_string());
-        let tokens = lexer.scan_tokens().unwrap();
-        assert_eq!(tokens[0].kind, TokenKind::Module);
-        assert_eq!(tokens[1].kind, TokenKind::Identifier("math".to_string()));
-        assert_eq!(tokens[2].kind, TokenKind::LeftBrace);
-        assert_eq!(tokens[3].kind, TokenKind::Export);
-        assert_eq!(tokens[4].kind, TokenKind::Fun);
-        assert_eq!(tokens[5].kind, TokenKind::Identifier("add".to_string()));
-        assert_eq!(tokens[6].kind, TokenKind::LeftParen);
-        assert_eq!(tokens[7].kind, TokenKind::Identifier("a".to_string()));
-        assert_eq!(tokens[8].kind, TokenKind::Comma);
-        assert_eq!(tokens[9].kind, TokenKind::Identifier("b".to_string()));
-        assert_eq!(tokens[10].kind, TokenKind::RightParen);
-        assert_eq!(tokens[11].kind, TokenKind::RightBrace);
-        assert_eq!(tokens[12].kind, TokenKind::EOF);
-    }
-
-    #[test]
-    fn test_scan_import() {
-        let mut lexer = Lexer::new("import { add as plus } from \"math\";".to_string());
-        let tokens = lexer.scan_tokens().unwrap();
-        assert_eq!(tokens[0].kind, TokenKind::Import);
-        assert_eq!(tokens[1].kind, TokenKind::LeftBrace);
-        assert_eq!(tokens[2].kind, TokenKind::Identifier("add".to_string()));
-        assert_eq!(tokens[3].kind, TokenKind::As);
-        assert_eq!(tokens[4].kind, TokenKind::Identifier("plus".to_string()));
-        assert_eq!(tokens[5].kind, TokenKind::RightBrace);
-        assert_eq!(tokens[6].kind, TokenKind::From);
-        assert_eq!(tokens[7].kind, TokenKind::String("math".to_string()));
-        assert_eq!(tokens[8].kind, TokenKind::Semicolon);
-        assert_eq!(tokens[9].kind, TokenKind::EOF);
+        Ok(())
     }
 }

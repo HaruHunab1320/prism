@@ -1,20 +1,36 @@
 mod parser_tests;
 mod interpreter_tests;
+mod module_tests;
+mod integration_tests;
+
+use prism::error::Result;
 
 #[tokio::test]
-async fn run_all_tests() {
-    // Parser Tests
-    parser_tests::test_parse_function_declaration();
-    parser_tests::test_parse_async_function();
-    parser_tests::test_parse_let_declaration();
-    parser_tests::test_parse_if_statement();
-    parser_tests::test_arithmetic_precedence();
-    parser_tests::test_logical_precedence();
-    parser_tests::test_unary_expressions();
-    parser_tests::test_call_expressions();
-    
-    // Interpreter Tests
-    // Note: These tests are now run directly by the test runner
-    // since they are marked with #[tokio::test]
-    println!("All tests passed!");
+async fn run_all_tests() -> Result<()> {
+    // Parser tests
+    parser_tests::test_parse_let_statement().await?;
+    parser_tests::test_parse_function_declaration().await?;
+    parser_tests::test_parse_if_statement().await?;
+    parser_tests::test_parse_while_statement().await?;
+    parser_tests::test_parse_expression().await?;
+
+    // Module tests
+    module_tests::test_basic_module().await?;
+    module_tests::test_module_function_export().await?;
+    module_tests::test_module_multiple_exports().await?;
+    module_tests::test_module_confidence_propagation().await?;
+    module_tests::test_module_not_found().await?;
+    module_tests::test_module_symbol_not_found().await?;
+    module_tests::test_module_context().await?;
+
+    // Integration tests
+    integration_tests::test_basic_execution().await?;
+    integration_tests::test_variables().await?;
+    integration_tests::test_scope().await?;
+    integration_tests::test_conditionals().await?;
+    integration_tests::test_loops().await?;
+    integration_tests::test_functions().await?;
+    integration_tests::test_error_handling().await?;
+
+    Ok(())
 }

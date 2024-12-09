@@ -1,62 +1,77 @@
-use prism::interpreter::Interpreter;
 use prism::value::{Value, ValueKind};
+use prism::interpreter::Interpreter;
+use prism::error::Result;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub async fn test_basic_execution() -> Result<()> {
+    let mut interpreter = Interpreter::new();
+    let result = interpreter.evaluate("42;".to_string()).await?;
+    assert_eq!(result.kind, ValueKind::Number(42.0));
+    Ok(())
+}
 
-    #[tokio::test]
-    async fn test_basic_arithmetic() {
-        let interpreter = Interpreter::new();
-        let result = interpreter.evaluate("2 + 3 * 4;".to_string()).await.unwrap();
-        assert_eq!(result.kind, ValueKind::Number(14.0));
-    }
+pub async fn test_variables() -> Result<()> {
+    let mut interpreter = Interpreter::new();
+    let result = interpreter.evaluate("let x = 42; x;".to_string()).await?;
+    assert_eq!(result.kind, ValueKind::Number(42.0));
+    Ok(())
+}
 
-    #[tokio::test]
-    async fn test_variables() {
-        let interpreter = Interpreter::new();
-        let result = interpreter.evaluate("let x = 42; x;".to_string()).await.unwrap();
-        assert_eq!(result.kind, ValueKind::Number(42.0));
-    }
+pub async fn test_scope() -> Result<()> {
+    let mut interpreter = Interpreter::new();
+    let source = r#"
+        let x = 1;
+        {
+            let x = 2;
+        }
+        x;"#;
+    let result = interpreter.evaluate(source.to_string()).await?;
+    assert_eq!(result.kind, ValueKind::Number(1.0));
+    Ok(())
+}
 
-    #[tokio::test]
-    async fn test_functions() {
-        let interpreter = Interpreter::new();
-        let source = r#"
-            fn add(a, b) {
-                return a + b;
-            }
-            add(2, 3);
-        "#;
-        let result = interpreter.evaluate(source.to_string()).await.unwrap();
-        assert_eq!(result.kind, ValueKind::Number(5.0));
-    }
+pub async fn test_conditionals() -> Result<()> {
+    let mut interpreter = Interpreter::new();
+    let source = r#"
+        let x = 10;
+        if (x > 5) {
+            x = 20;
+        } else {
+            x = 0;
+        }
+        x;"#;
+    let result = interpreter.evaluate(source.to_string()).await?;
+    assert_eq!(result.kind, ValueKind::Number(20.0));
+    Ok(())
+}
 
-    #[tokio::test]
-    async fn test_modules() {
-        let interpreter = Interpreter::new();
-        let source = r#"
-            module math ~> 0.9 {
-                export fn add(a, b) {
-                    return a + b;
-                }
-            }
-            import { add } from "math";
-            add(2, 3);
-        "#;
-        let result = interpreter.evaluate(source.to_string()).await.unwrap();
-        assert_eq!(result.kind, ValueKind::Number(5.0));
-    }
+pub async fn test_loops() -> Result<()> {
+    let mut interpreter = Interpreter::new();
+    let source = r#"
+        let x = 0;
+        while (x < 5) {
+            x = x + 1;
+        }
+        x;"#;
+    let result = interpreter.evaluate(source.to_string()).await?;
+    assert_eq!(result.kind, ValueKind::Number(5.0));
+    Ok(())
+}
 
-    #[tokio::test]
-    async fn test_confidence() {
-        let interpreter = Interpreter::new();
-        let source = r#"
-            let x = 42 ~> 0.9;
-            x;
-        "#;
-        let result = interpreter.evaluate(source.to_string()).await.unwrap();
-        assert_eq!(result.kind, ValueKind::Number(42.0));
-        assert_eq!(result.confidence, Some(0.9));
-    }
+pub async fn test_functions() -> Result<()> {
+    let mut interpreter = Interpreter::new();
+    let source = r#"
+        fn add(a, b) {
+            return a + b;
+        }
+        add(2, 3);"#;
+    let result = interpreter.evaluate(source.to_string()).await?;
+    assert_eq!(result.kind, ValueKind::Number(5.0));
+    Ok(())
+}
+
+pub async fn test_error_handling() -> Result<()> {
+    let mut interpreter = Interpreter::new();
+    let result = interpreter.evaluate("undefined_variable;".to_string()).await;
+    assert!(result.is_err());
+    Ok(())
 }

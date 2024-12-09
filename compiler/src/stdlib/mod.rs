@@ -1,26 +1,32 @@
+use std::sync::Arc;
+use parking_lot::RwLock;
+use crate::error::Result;
+use crate::value::{Value, ValueKind};
+use crate::module::Module;
+
 pub mod core;
 pub mod llm;
 pub mod medical;
 pub mod utils;
 
-use crate::error::Result;
-use crate::value::Value;
-
-pub async fn create_stdlib() -> Result<Value> {
+pub fn init_stdlib() -> Result<Vec<(&'static str, Value)>> {
     let mut modules = Vec::new();
     
-    // Create core module
-    modules.push(("core", core::create_core_module()?));
+    // Initialize each module and convert to Value
+    let core_module = core::init_core_module()?;
+    let llm_module = llm::init_llm_module()?;
+    let medical_module = medical::init_medical_module()?;
+    let utils_module = utils::init_utils_module()?;
+
+    // Convert each module to a Value with the correct RwLock type
+    let convert_module = |m: Arc<RwLock<Module>>| -> Value {
+        Value::new(ValueKind::Module(m))
+    };
+
+    modules.push(("core", convert_module(core_module)));
+    modules.push(("llm", convert_module(llm_module)));
+    modules.push(("medical", convert_module(medical_module)));
+    modules.push(("utils", convert_module(utils_module)));
     
-    // Create llm module
-    modules.push(("llm", llm::create_llm_module()?));
-    
-    // Create medical module
-    modules.push(("medical", medical::create_medical_module()?));
-    
-    // Create utils module
-    modules.push(("utils", utils::create_utils_module()?));
-    
-    // Return all modules
-    Ok(Value::new(crate::value::ValueKind::Object(std::sync::Arc::new(modules))))
+    Ok(modules)
 }

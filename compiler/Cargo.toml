@@ -13,32 +13,30 @@ path = "src/main.rs"
 required-features = ["native"]
 
 [dependencies]
-logos = "0.12"
-thiserror = "1.0"
 tokio = { version = "1.0", features = ["full"], optional = true }
-async-trait = "0.1"
-colored = { version = "2.0", optional = true }
 reqwest = { version = "0.11", features = ["json"], optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["Request", "RequestInit", "RequestMode", "Response"] }
-serde-wasm-bindgen = "0.4"
-dotenv = { version = "0.15", optional = true }
-ndarray = "0.15"
+async-trait = "0.1"
 futures = "0.3"
-log = "0.4"
+parking_lot = "0.12"
+logos = "0.12"
+thiserror = "1.0"
+colored = { version = "2.0", optional = true }
 env_logger = "0.9"
+mockito = { version = "1.2", optional = true }
+dotenv = "0.15"
+rand = "0.8"
 
 [dev-dependencies]
 tokio-test = "0.4"
 pretty_assertions = "1.0"
 test-log = "0.2"
+mockito = "1.2"
 
 [features]
 default = ["native"]
-native = ["tokio", "reqwest", "dotenv", "colored"]
+native = ["tokio", "reqwest", "colored", "mockito"]
 wasm = []
 
 [[example]]
