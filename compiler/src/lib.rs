@@ -30,5 +30,7 @@ pub mod confidence;
 pub mod context;
 pub mod llm;
 pub mod stdlib;
+pub mod repl;
 
 pub use interpreter::Interpreter;
+pub use repl::Repl;

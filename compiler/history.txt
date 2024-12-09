@@ -1,0 +1,9 @@
+#V2
+exit
+let x = 42\nlet y = 10\nx + y\n\nlet message = "Hello, Prism!"\nmessage
+let x = 42;
+let y = 10;
+x + y;
+let message = "Hello Prism!";
+message;
+exit

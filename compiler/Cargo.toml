@@ -1,7 +1,32 @@
 [package]
 name = "prism"
-version = "0.1.0"
+version = "0.9.0"
 edition = "2021"
+description = "A modern programming language designed for AI-first development"
+authors = ["Oneiro Team"]
+license = "MIT"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+parking_lot = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dotenv = "0.15"
+env_logger = "0.10"
+log = "0.4"
+async-trait = "0.1"
+thiserror = "1.0"
+rustyline = "12.0"
+colored = "2.0"
+wasm-bindgen = { version = "0.2", optional = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[features]
+default = ["native"]
+native = []
+wasm = ["wasm-bindgen"]
 
 [lib]
 name = "prism"
@@ -10,50 +35,4 @@ path = "src/lib.rs"
 [[bin]]
 name = "prism"
 path = "src/main.rs"
-required-features = ["native"]
-
-[dependencies]
-tokio = { version = "1.0", features = ["full"], optional = true }
-reqwest = { version = "0.11", features = ["json"], optional = true }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-async-trait = "0.1"
-futures = "0.3"
-parking_lot = "0.12"
-logos = "0.12"
-thiserror = "1.0"
-colored = { version = "2.0", optional = true }
-env_logger = "0.9"
-mockito = { version = "1.2", optional = true }
-dotenv = "0.15"
-rand = "0.8"
-
-[dev-dependencies]
-tokio-test = "0.4"
-pretty_assertions = "1.0"
-test-log = "0.2"
-mockito = "1.2"
-
-[features]
-default = ["native"]
-native = ["tokio", "reqwest", "colored", "mockito"]
-wasm = []
-
-[[example]]
-name = "comparison"
-path = "examples/comparison/run_comparison.rs"
-required-features = ["native"]
-
-[[example]]
-name = "medical_diagnosis"
-path = "examples/medical_diagnosis.rs"
-required-features = ["native"]
-
-[profile.release]
-opt-level = 3
-lto = true
-
-[profile.dev]
-opt-level = 0
-debug = true
  

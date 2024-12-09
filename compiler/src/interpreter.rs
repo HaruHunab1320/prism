@@ -4,20 +4,18 @@ use crate::ast::{Expr, Stmt};
 use crate::environment::Environment;
 use crate::error::{PrismError, Result};
 use crate::value::{Value, ValueKind};
-use crate::module::ModuleRegistry;
+use crate::token::TokenKind;
 use std::future::Future;
 use std::pin::Pin;
 
 pub struct Interpreter {
     environment: Arc<RwLock<Environment>>,
-    module_registry: ModuleRegistry,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         Self {
             environment: Arc::new(RwLock::new(Environment::new())),
-            module_registry: ModuleRegistry::new(),
         }
     }
 
@@ -33,23 +31,31 @@ impl Interpreter {
     fn execute_statement<'a>(&'a mut self, stmt: &'a Stmt) -> Pin<Box<dyn Future<Output = Result<Value>> + Send + 'a>> {
         Box::pin(async move {
             match stmt {
-                Stmt::Expression(expr) => self.evaluate_expression(expr).await,
+                Stmt::Expression(expr) => {
+                    println!("Executing expression: {:?}", expr);
+                    let result = self.evaluate_expression(expr).await?;
+                    println!("Expression result: {:?}", result);
+                    Ok(result)
+                },
                 Stmt::Let(name, initializer) => {
+                    println!("Declaring variable: {} with initializer: {:?}", name, initializer);
                     let value = if let Some(init) = initializer {
-                        self.evaluate_expression(init).await?
+                        let val = self.evaluate_expression(init).await?;
+                        println!("Initialized {} with value: {:?}", name, val);
+                        val
                     } else {
                         Value::new(ValueKind::Nil)
                     };
                     self.environment.write().define(name.clone(), value.clone())?;
                     Ok(value)
-                }
+                },
                 Stmt::Block(statements) => {
                     let mut result = Value::new(ValueKind::Nil);
                     for stmt in statements {
                         result = self.execute_statement(stmt).await?;
                     }
                     Ok(result)
-                }
+                },
                 Stmt::Function { name, params, body: _, is_async: _, confidence } => {
                     let closure = Arc::clone(&self.environment);
                     let params = params.clone();
@@ -69,7 +75,7 @@ impl Interpreter {
                     }
                     self.environment.write().define(name.clone(), function.clone())?;
                     Ok(function)
-                }
+                },
                 _ => Ok(Value::new(ValueKind::Nil)), // Handle other statement types
             }
         })
@@ -78,13 +84,42 @@ impl Interpreter {
     fn evaluate_expression<'a>(&'a self, expr: &'a Expr) -> Pin<Box<dyn Future<Output = Result<Value>> + Send + 'a>> {
         Box::pin(async move {
             match expr {
-                Expr::Literal(value) => Ok(value.clone()),
-                Expr::Variable(name) => self.environment.read().get(name),
+                Expr::Literal(value) => {
+                    println!("Evaluating literal: {:?}", value);
+                    Ok(value.clone())
+                },
+                Expr::Variable(name) => {
+                    println!("Looking up variable: {}", name);
+                    let val = self.environment.read().get(name)?;
+                    println!("Found value: {:?}", val);
+                    Ok(val)
+                },
+                Expr::Binary { left, operator, right } => {
+                    println!("Evaluating binary expression: {:?} {:?} {:?}", left, operator, right);
+                    let left = self.evaluate_expression(left).await?;
+                    let right = self.evaluate_expression(right).await?;
+                    println!("Binary operands: {:?} {:?}", left, right);
+                    
+                    match (&left.kind, &right.kind) {
+                        (ValueKind::Number(l), ValueKind::Number(r)) => {
+                            let result = match operator.kind {
+                                TokenKind::Plus => l + r,
+                                TokenKind::Minus => l - r,
+                                TokenKind::Star => l * r,
+                                TokenKind::Slash => l / r,
+                                _ => return Err(PrismError::RuntimeError("Invalid operator for numbers".to_string())),
+                            };
+                            println!("Binary result: {:?}", result);
+                            Ok(Value::new(ValueKind::Number(result)))
+                        },
+                        _ => Err(PrismError::RuntimeError(format!("Operands must be numbers, got {:?} and {:?}", left.kind, right.kind))),
+                    }
+                },
                 Expr::Assign { name, value } => {
                     let value = self.evaluate_expression(value).await?;
                     self.environment.write().assign(name, value.clone())?;
                     Ok(value)
-                }
+                },
                 Expr::Call { callee, arguments } => {
                     let callee = self.evaluate_expression(callee).await?;
                     let mut args = Vec::new();

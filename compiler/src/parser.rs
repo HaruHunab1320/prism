@@ -260,7 +260,8 @@ impl Parser {
             Ok(Expr::Literal(Value::new(ValueKind::Boolean(true))))
         } else if self.match_token(&[TokenKind::Nil]) {
             Ok(Expr::Literal(Value::new(ValueKind::Nil)))
-        } else if self.match_token(&[TokenKind::Number(0.0)]) {
+        } else if self.check_number() {
+            self.advance();
             if let TokenKind::Number(n) = self.previous().kind {
                 Ok(Expr::Literal(Value::new(ValueKind::Number(n))))
             } else {
@@ -357,6 +358,13 @@ impl Parser {
             Ok(n)
         } else {
             Err(PrismError::ParseError(message.to_string()))
+        }
+    }
+
+    fn check_number(&self) -> bool {
+        match &self.peek().kind {
+            TokenKind::Number(_) => true,
+            _ => false,
         }
     }
 }
