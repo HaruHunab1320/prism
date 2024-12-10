@@ -1,132 +1,102 @@
-# Prism Programming Language
+# Prism Language
 
-A modern programming language designed for AI-first development, featuring confidence tracking, context awareness, and seamless LLM integration.
+Prism is a domain-specific language designed for medical and healthcare applications with built-in LLM integration capabilities. It features confidence tracking, context management, and robust error handling.
 
-## Features
+## Current Status (v0.9)
 
-- Confidence tracking and propagation
-- Context-aware computation
-- Built-in LLM integration
-- Pattern matching with confidence levels
-- Async/await support
-- Module system with confidence inheritance
-- REPL environment for interactive development
-- WebAssembly support
-
-## Building
-
-### Prerequisites
-
-- Rust toolchain (1.70.0 or later)
-- Cargo package manager
-- For WebAssembly builds: wasm-pack
-
-### Native Build
-
-```bash
-# Build the library and CLI
-cargo build --features native
-
-# Run tests
-cargo test --features native
-
-# Start the REPL
-cargo run --features native
-```
-
-### WebAssembly Build
-
-```bash
-# Build for wasm32 target
-cargo build --target wasm32-unknown-unknown --no-default-features --features wasm
-
-# Build with wasm-pack (for npm package)
-wasm-pack build --target web --features wasm
-```
-
-## Usage
-
-### CLI/REPL
-
-```bash
-# Start the REPL
-prism-cli
-
-# Run a Prism file
-prism-cli path/to/script.prism
-```
-
-### WebAssembly
-
-```typescript
-import { Prism } from 'prism-lang';
-
-const prism = new Prism();
-
-// Evaluate Prism code
-const result = await prism.eval(`
-    let x = 42 ~> 0.9;  // Value with 90% confidence
-    x + 10
-`);
-
-console.log(result.value);      // 52
-console.log(result.confidence); // 0.9
-```
-
-## Examples
-
-### Basic Syntax
-
-```prism
-// Variable with confidence
-let x = 42 ~> 0.9;
-
-// Context-aware computation
-in context "analysis" {
-    let result = process_data(x) ~> 0.8;
-    result
-}
-
-// Pattern matching with confidence
-match value {
-    x ~{0.8, 1.0} => "High confidence",
-    x ~{0.5, 0.8} => "Medium confidence",
-    _ => "Low confidence"
-}
-```
-
-### Async Operations
-
-```prism
-async fn fetch_data() ~0.9 {
-    let response = await http.get("https://api.example.com/data");
-    response.json()
-}
-
-// Use in async context
-let data = await fetch_data();
-```
+The language is currently in late beta, with core features implemented and stabilizing for v1.0 release. See [ROADMAP.md](ROADMAP.md) for detailed timeline and [DEVELOPMENT.md](DEVELOPMENT.md) for current progress.
 
 ## Project Structure
 
 ```
 prism/
-├── compiler/         # Core language implementation
-│   └── src/         # Source code
-├── prism-ts/        # TypeScript/WebAssembly bindings
-├── examples/        # Example Prism programs and comparisons
-├── tests/          # Test suite
-└── docs/           # Documentation
+├── compiler/           # Core compiler implementation
+│   ├── src/           # Source code
+│   ├── examples/      # Example programs
+│   └── tests/         # Test suite
+├── docs/              # Documentation
+├── tools/             # Development tools
+└── std/               # Standard library
+    ├── core/          # Core functionality
+    ├── utils/         # Utility functions
+    ├── llm/           # LLM integration
+    └── medical/       # Medical types and tools
 ```
+
+## Features
+
+### Implemented ✅
+- Core language features (90%)
+  - Variables, functions, and closures
+  - Async/await support
+  - Error handling with confidence tracking
+  - Module system
+  - Context management
+  - Basic LLM integration
+
+### In Progress 🚧
+- LLM Integration (60%)
+  - Basic provider interfaces
+  - Completion API
+  - Embeddings (WIP)
+  - Fine-tuning (Planned)
+
+- Medical Module (20%)
+  - Basic health record types
+  - Simple diagnosis tools
+  - FHIR integration (Planned)
+
+### Developer Tools
+- REPL (80%)
+- LSP Support (40%)
+- Testing Framework (85%)
+- Error Reporting (90%)
+
+## Getting Started
+
+1. **Installation**
+```bash
+git clone https://github.com/oneirocom/prism.git
+cd prism
+cargo build --release
+```
+
+2. **Running the REPL**
+```bash
+cargo run --bin prism-repl
+```
+
+3. **Running Tests**
+```bash
+cargo test
+```
+
+## Documentation
+
+- [Getting Started Guide](docs/getting-started.md)
+- [Language Reference](docs/reference/README.md)
+- [Standard Library](docs/std/README.md)
+- [Development Guide](DEVELOPMENT.md)
+- [Roadmap](ROADMAP.md)
+
+## Examples
+
+Check the `compiler/examples/` directory for sample programs demonstrating various language features:
+
+- Basic syntax and control flow
+- Async operations
+- LLM integration
+- Medical data processing
+- Error handling with confidence
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on contributing to Prism.
-
-## Development Status
-
-See [DEVELOPMENT.md](DEVELOPMENT.md) for current development status and roadmap.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to Prism.
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+Special thanks to all contributors and the medical informatics community for their valuable input and support.
