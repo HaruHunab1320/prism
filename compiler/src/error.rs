@@ -1,31 +1,49 @@
 use std::io;
-use thiserror::Error;
+use serde_json;
 
 pub type Result<T> = std::result::Result<T, PrismError>;
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum PrismError {
-    #[error("Runtime error: {0}")]
-    RuntimeError(String),
-
-    #[error("Parse error: {0}")]
+    IO(io::Error),
     ParseError(String),
-
-    #[error("Type error: {0}")]
     TypeError(String),
-
-    #[error("Undefined variable: {0}")]
-    UndefinedVariable(String),
-
-    #[error("Module not found: {0}")]
+    RuntimeError(String),
+    Serialization(serde_json::Error),
     ModuleNotFound(String),
-
-    #[error("Module already exists: {0}")]
     ModuleAlreadyExists(String),
-
-    #[error("IO error: {0}")]
-    IoError(#[from] io::Error),
-
-    #[error("JSON error: {0}")]
-    JsonError(#[from] serde_json::Error),
+    UndefinedVariable(String),
+    InvalidOperation(String),
+    InvalidArgument(String),
 }
+
+impl From<io::Error> for PrismError {
+    fn from(err: io::Error) -> Self {
+        PrismError::IO(err)
+    }
+}
+
+impl From<serde_json::Error> for PrismError {
+    fn from(err: serde_json::Error) -> Self {
+        PrismError::Serialization(err)
+    }
+}
+
+impl std::fmt::Display for PrismError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PrismError::IO(err) => write!(f, "IO error: {}", err),
+            PrismError::ParseError(msg) => write!(f, "Parse error: {}", msg),
+            PrismError::TypeError(msg) => write!(f, "Type error: {}", msg),
+            PrismError::RuntimeError(msg) => write!(f, "Runtime error: {}", msg),
+            PrismError::Serialization(err) => write!(f, "Serialization error: {}", err),
+            PrismError::ModuleNotFound(name) => write!(f, "Module not found: {}", name),
+            PrismError::ModuleAlreadyExists(name) => write!(f, "Module already exists: {}", name),
+            PrismError::UndefinedVariable(name) => write!(f, "Undefined variable: {}", name),
+            PrismError::InvalidOperation(msg) => write!(f, "Invalid operation: {}", msg),
+            PrismError::InvalidArgument(msg) => write!(f, "Invalid argument: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for PrismError {}

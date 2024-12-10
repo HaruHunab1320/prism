@@ -1,186 +1,131 @@
-# Prism Language
+# Prism Programming Language
 
-A modern programming language designed for AI-first development with first-class support for confidence scores and context tracking.
+A modern programming language designed for AI-first development, featuring confidence tracking, context awareness, and seamless LLM integration.
 
-## Current Status (v0.9)
+## Features
 
-### ✅ Working Features
+- Confidence tracking and propagation
+- Context-aware computation
+- Built-in LLM integration
+- Pattern matching with confidence levels
+- Async/await support
+- Module system with confidence inheritance
+- REPL environment for interactive development
+- WebAssembly support
 
-The following features are fully implemented and tested:
+## Building
 
-1. Variable System:
-   - Variable declarations with `let`
-   - Integer and floating-point numbers
-   - String literals
-   - Nil values
-   - Variable shadowing
-   - Variable scope and state management
+### Prerequisites
 
-2. Arithmetic Operations:
-   - Integer arithmetic (+, -, *, /)
-   - Floating-point arithmetic
-   - Mixed integer/float operations
-   - Proper operator precedence
-   - Parenthesized expressions
+- Rust toolchain (1.70.0 or later)
+- Cargo package manager
+- For WebAssembly builds: wasm-pack
 
-3. Expression System:
-   - Complex nested expressions
-   - Multi-term calculations
-   - Proper order of operations
-   - Expression result handling
-   - Expression statement evaluation
-
-4. REPL Features:
-   - Interactive expression evaluation
-   - Variable state persistence
-   - Multi-line input support
-   - Expression result display
-   - Detailed debug output
-
-Example:
-```prism
-// Variable declarations with different types
-let x = 42;              // Integer
-let y = 3.14;           // Float
-let name = "Prism";     // String
-let empty = nil;        // Nil value
-
-// Arithmetic and expressions
-let sum = x + 10;           // Basic arithmetic
-let complex = (x + y) * 2;  // Mixed types
-let nested = ((x + 10) * (y + 5)) / 2;  // Complex nesting
-
-// Variable reuse and shadowing
-let a = 10;
-let b = a + 5;     // Variable reuse
-let a = a + 1;     // Variable shadowing
-```
-
-## Implementation Status
-
-### Core Language Features:
-- ✅ Lexer and Parser (100%)
-  - Token recognition
-  - Expression parsing
-  - Statement parsing
-  - Error reporting
-- ✅ Basic Interpreter (100%)
-  - Expression evaluation
-  - Statement execution
-  - Variable management
-  - Debug output
-- ✅ Value System (100%)
-  - Numbers (Integer/Float)
-  - Strings
-  - Nil values
-  - Value type checking
-- ⏳ Control Flow (Planned)
-  - If/Else statements
-  - Loops
-  - Function definitions
-- ⏳ Error Handling (In Progress)
-  - Basic error types
-  - Error propagation
-  - Recovery mechanisms
-
-✅ Type System:
-- ✅ Basic Types
-  - Numbers (Integer/Float)
-  - Strings
-  - Nil
-- ⏳ Advanced Types (Planned)
-  - Boolean
-  - Arrays
-  - Objects
-  - Functions
-  - Custom types
-
-## Developer Experience
-- ✅ REPL Environment (100%)
-  - Interactive execution
-  - State management
-  - Debug output
-- ✅ Script Execution (100%)
-  - File loading
-  - Script parsing
-  - Full execution
-- ⏳ Development Tools (Planned)
-  - Debugger
-  - Code formatter
-  - Language server
-
-## Documentation (40% complete)
-- ✅ Basic language features (100%)
-- ✅ REPL usage (100%)
-- ⏳ Module system docs (Planned)
-- ⏳ Standard library docs (Planned)
-- ⏳ API reference (In Progress)
-- ⏳ Language specification (In Progress)
-- ⏳ Tutorials and examples (In Progress)
-
-## Roadmap to v1.0
-
-1. High Priority:
-   - [x] Variable system
-   - [x] Basic arithmetic
-   - [x] Expression evaluation
-   - [ ] Control flow statements
-   - [ ] Function definitions
-   - [ ] Error handling improvements
-
-2. Medium Priority:
-   - [ ] Boolean operations
-   - [ ] Array support
-   - [ ] Object system
-   - [ ] Standard library
-
-3. Lower Priority:
-   - [ ] Type system expansion
-   - [ ] Module system
-   - [ ] Development tools
-   - [ ] Performance optimizations
-
-## Getting Started
+### Native Build
 
 ```bash
-# Build the project
-cargo build
+# Build the library and CLI
+cargo build --features native
 
-# Run the REPL
-cargo run
+# Run tests
+cargo test --features native
 
-# Run a Prism script
-cargo run examples/demo.prism
+# Start the REPL
+cargo run --features native
 ```
 
-## Example Programs
+### WebAssembly Build
 
-### Basic Arithmetic
+```bash
+# Build for wasm32 target
+cargo build --target wasm32-unknown-unknown --no-default-features --features wasm
+
+# Build with wasm-pack (for npm package)
+wasm-pack build --target web --features wasm
+```
+
+## Usage
+
+### CLI/REPL
+
+```bash
+# Start the REPL
+prism-cli
+
+# Run a Prism file
+prism-cli path/to/script.prism
+```
+
+### WebAssembly
+
+```typescript
+import { Prism } from 'prism-lang';
+
+const prism = new Prism();
+
+// Evaluate Prism code
+const result = await prism.eval(`
+    let x = 42 ~> 0.9;  // Value with 90% confidence
+    x + 10
+`);
+
+console.log(result.value);      // 52
+console.log(result.confidence); // 0.9
+```
+
+## Examples
+
+### Basic Syntax
+
 ```prism
-// Variable declarations and arithmetic
-let x = 42;
-let y = 10;
+// Variable with confidence
+let x = 42 ~> 0.9;
 
-// Basic operations
-let sum = x + y;      // 52
-let diff = x - y;     // 32
-let prod = x * y;     // 420
-let quot = x / y;     // 4.2
+// Context-aware computation
+in context "analysis" {
+    let result = process_data(x) ~> 0.8;
+    result
+}
 
-// Complex expressions
-let result = (x + y) * (x - y);  // 1664
+// Pattern matching with confidence
+match value {
+    x ~{0.8, 1.0} => "High confidence",
+    x ~{0.5, 0.8} => "Medium confidence",
+    _ => "Low confidence"
+}
 ```
 
-### String Handling
+### Async Operations
+
 ```prism
-let message = "Hello, Prism!";
+async fn fetch_data() ~0.9 {
+    let response = await http.get("https://api.example.com/data");
+    response.json()
+}
+
+// Use in async context
+let data = await fetch_data();
 ```
 
-More examples coming soon!
+## Project Structure
+
+```
+prism/
+├── compiler/         # Core language implementation
+│   └── src/         # Source code
+├── prism-ts/        # TypeScript/WebAssembly bindings
+├── examples/        # Example Prism programs and comparisons
+├── tests/          # Test suite
+└── docs/           # Documentation
+```
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on contributing to Prism.
+
+## Development Status
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for current development status and roadmap.
 
 ## License
 

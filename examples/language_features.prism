@@ -1,0 +1,124 @@
+// Prism Language Features Tutorial
+// This script demonstrates the core features of Prism with examples and explanations
+
+// -----------------------------
+// 1. Basic Values & Confidence
+// -----------------------------
+// In Prism, any value can have an associated confidence level (0.0 to 1.0)
+let x = 42 ~> 0.9;        // Number with 90% confidence
+let y = 10 ~> 0.8;        // Number with 80% confidence
+print("Basic values with confidence:");
+print(x);                 // Prints: 42 (0.9 confidence)
+print(y);                 // Prints: 10 (0.8 confidence)
+
+// -----------------------------
+// 2. Arithmetic & Confidence Flow
+// -----------------------------
+// Confidence levels automatically flow through operations
+let sum = x + y;          // Confidence levels are combined
+let diff = x - y;
+let prod = x * y;
+let div = x / y;
+print("\nArithmetic with confidence flow:");
+print(sum);               // Combined confidence
+print(diff);
+print(prod);
+print(div);
+
+// -----------------------------
+// 3. Control Flow & Confidence
+// -----------------------------
+// Conditional statements can have confidence levels
+print("\nConditional with confidence:");
+if x > y ~> 0.7 {         // Condition with 70% confidence
+    print("x is greater than y (with 0.7 confidence)");
+}
+
+// Traditional control flow works as expected
+print("\nTraditional loop:");
+let counter = 0;
+while counter < 3 {
+    print(counter);
+    counter = counter + 1;
+}
+
+// -----------------------------
+// 4. Functions & Confidence
+// -----------------------------
+// Functions can have confidence levels that affect their returns
+fn add_with_confidence(a, b) ~> 0.95 {
+    a + b                 // Return value inherits combined confidence
+}
+
+let result = add_with_confidence(x, y);
+print("\nFunction with confidence:");
+print(result);
+
+// -----------------------------
+// 5. Async Operations
+// -----------------------------
+// Prism supports async/await for operations that take time
+async fn delayed_value(val) {
+    // Simulating async operation (e.g., API call)
+    await sleep(1000);    // Wait for 1 second
+    val                   // Return the value
+}
+
+print("\nAsync operation result:");
+let async_result = await delayed_value(42);
+print(async_result);
+
+// -----------------------------
+// 6. Context Management
+// -----------------------------
+// Code can be executed in specific contexts
+in context "analysis" {
+    let context_value = x * 2 ~> 0.85;
+    print("\nValue in analysis context:");
+    print(context_value);
+}
+
+// -----------------------------
+// 7. Pattern Matching
+// -----------------------------
+// Pattern matching with confidence ranges
+let match_value = 42 ~> 0.9;
+let pattern_result = match match_value {
+    val ~{0.8, 1.0} => "High confidence",    // 80-100%
+    val ~{0.5, 0.8} => "Medium confidence",  // 50-80%
+    _ => "Low confidence"                    // Below 50%
+};
+
+print("\nPattern matching result:");
+print(pattern_result);
+
+// -----------------------------
+// 8. Error Handling
+// -----------------------------
+// Errors can have confidence levels
+fn might_fail(val) {
+    if val < 0 {
+        error("Value cannot be negative") ~> 0.9;
+    }
+    val
+}
+
+print("\nError handling example:");
+try {
+    let error_test = might_fail(-1);
+    print("This shouldn't print");
+} catch err {
+    print("Caught error:");
+    print(err);
+}
+
+// -----------------------------
+// 9. Complex Expressions
+// -----------------------------
+// Putting it all together with a complex expression
+let final_value = (x + y) * (match_value / 2) ~> 0.85;
+print("\nFinal complex expression:");
+print(final_value);
+
+// End of tutorial
+print("\nTutorial complete!"); 

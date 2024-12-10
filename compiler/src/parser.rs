@@ -26,13 +26,57 @@ impl Parser {
     }
 
     fn declaration(&mut self) -> Result<Stmt> {
-        if self.match_token(&[TokenKind::Let]) {
+        if self.match_token(&[TokenKind::Import]) {
+            self.import_declaration()
+        } else if self.match_token(&[TokenKind::Let]) {
             self.let_declaration()
         } else if self.match_token(&[TokenKind::Fun]) {
             self.function_declaration()
         } else {
             self.statement()
         }
+    }
+
+    fn import_declaration(&mut self) -> Result<Stmt> {
+        let mut imports = Vec::new();
+
+        // Parse single import or multiple imports
+        if self.match_token(&[TokenKind::LeftBrace]) {
+            // Parse multiple imports
+            loop {
+                let name = self.consume_identifier("Expected import name.")?;
+                let alias = if self.match_token(&[TokenKind::As]) {
+                    Some(self.consume_identifier("Expected alias name after 'as'.")?)
+                } else {
+                    None
+                };
+                imports.push((name, alias));
+
+                if !self.match_token(&[TokenKind::Comma]) {
+                    break;
+                }
+            }
+            self.consume(TokenKind::RightBrace, "Expected '}' after imports.")?;
+        } else {
+            // Parse single import
+            let name = self.consume_identifier("Expected import name.")?;
+            let alias = if self.match_token(&[TokenKind::As]) {
+                Some(self.consume_identifier("Expected alias name after 'as'.")?)
+            } else {
+                None
+            };
+            imports.push((name, alias));
+        }
+
+        self.consume(TokenKind::From, "Expected 'from' after imports.")?;
+        let module = self.consume_string("Expected module path.")?;
+        self.consume(TokenKind::Semicolon, "Expected ';' after import.")?;
+
+        Ok(Stmt::Import {
+            module,
+            imports,
+            confidence: None,
+        })
     }
 
     fn let_declaration(&mut self) -> Result<Stmt> {
@@ -349,6 +393,16 @@ impl Parser {
         match &self.peek().kind {
             TokenKind::Number(_) => true,
             _ => false,
+        }
+    }
+
+    fn consume_string(&mut self, message: &str) -> Result<String> {
+        if let TokenKind::String(s) = &self.peek().kind {
+            let s = s.clone();
+            self.advance();
+            Ok(s)
+        } else {
+            Err(PrismError::ParseError(message.to_string()))
         }
     }
 }

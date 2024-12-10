@@ -8,28 +8,78 @@ We love your input! We want to make contributing to Prism as easy and transparen
 - Proposing new features
 - Becoming a maintainer
 
-## We Develop with Github
+## Development Setup
 
-We use GitHub to host code, to track issues and feature requests, as well as accept pull requests.
+1. Install Rust toolchain (1.70.0 or later)
+2. Install wasm-pack for WebAssembly builds
+3. Clone the repository
+4. Install dependencies
 
-## We Use [Github Flow](https://guides.github.com/introduction/flow/index.html)
+```bash
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-Pull requests are the best way to propose changes to the codebase. We actively welcome your pull requests:
+# Install wasm-pack
+curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-1. Fork the repo and create your branch from `main`.
-2. If you've added code that should be tested, add tests.
-3. If you've changed APIs, update the documentation.
-4. Ensure the test suite passes.
-5. Make sure your code lints.
-6. Issue that pull request!
+# Clone repository
+git clone https://github.com/oneirocom/prism.git
+cd prism
+
+# Add wasm32 target
+rustup target add wasm32-unknown-unknown
+```
+
+## Building and Testing
+
+### Native Build
+
+```bash
+# Build the library and CLI
+cargo build --features native
+
+# Run tests
+cargo test --features native
+
+# Start the REPL
+cargo run --features native
+```
+
+### WebAssembly Build
+
+```bash
+# Build for wasm32 target
+cargo build --target wasm32-unknown-unknown --no-default-features --features wasm
+
+# Build with wasm-pack (for npm package)
+wasm-pack build --target web --features wasm
+
+# Run WASM tests
+wasm-pack test --chrome --features wasm
+```
+
+## Development Process
+
+1. Fork the repo and create your branch from `main`
+2. Make your changes
+3. If you've added code that should be tested, add tests
+4. If you've changed APIs, update the documentation
+5. Ensure all tests pass (both native and WASM)
+6. Create a pull request
+
+## Pull Request Process
+
+1. Update the README.md with details of changes to the interface
+2. Update the DEVELOPMENT.md with details of new features or changes
+3. The PR will be merged once you have the sign-off of two maintainers
 
 ## Any contributions you make will be under the MIT Software License
 
 In short, when you submit code changes, your submissions are understood to be under the same [MIT License](http://choosealicense.com/licenses/mit/) that covers the project. Feel free to contact the maintainers if that's a concern.
 
-## Report bugs using Github's [issue tracker](https://github.com/yourusername/prism/issues)
+## Report bugs using Github's [issue tracker](https://github.com/oneirocom/prism/issues)
 
-We use GitHub issues to track public bugs. Report a bug by [opening a new issue](https://github.com/yourusername/prism/issues/new).
+We use GitHub issues to track public bugs. Report a bug by [opening a new issue](https://github.com/oneirocom/prism/issues/new).
 
 ## Write bug reports with detail, background, and sample code
 
@@ -38,7 +88,7 @@ We use GitHub issues to track public bugs. Report a bug by [opening a new issue]
 - A quick summary and/or background
 - Steps to reproduce
   - Be specific!
-  - Give sample code if you can.
+  - Give sample code if you can
 - What you expected would happen
 - What actually happens
 - Notes (possibly including why you think this might be happening, or stuff you tried that didn't work)
@@ -48,6 +98,7 @@ We use GitHub issues to track public bugs. Report a bug by [opening a new issue]
 * Use 4 spaces for indentation rather than tabs
 * Run `cargo fmt` before committing
 * Run `cargo clippy` to catch common mistakes
+* Keep feature flags consistent between native and WASM builds
 
 ## License
 
